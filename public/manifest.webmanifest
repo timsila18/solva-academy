@@ -1,0 +1,18 @@
+{
+  "name": "Solva Academy",
+  "short_name": "Solva Academy",
+  "description": "A Kenyan-first and Africa-ready learning ecosystem.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#006BFF",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
