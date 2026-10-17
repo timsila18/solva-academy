@@ -5,6 +5,7 @@ import { writeAuditEvent } from "@/lib/audit/audit";
 import { requireUser } from "@/lib/authorization/server";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { slugify } from "@/lib/utils";
+import type { AcademyApplicationState } from "./application-state";
 import {
   academyApplicationSchema,
   instructorApplicationSchema,
@@ -13,13 +14,19 @@ import {
   reviewActionSchema,
 } from "@/lib/validation/tenant";
 
-export async function submitAcademyApplicationAction(formData: FormData) {
-  const user = await requireUser();
-  const parsed = academyApplicationSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) redirect("/academies/start?error=validation");
-
+export async function submitAcademyApplicationAction(_previous: AcademyApplicationState, formData: FormData): Promise<AcademyApplicationState> {
   const supabase = await createServerSupabaseClient();
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError || !user) return { needsSignIn: true, error: "Please sign in before submitting your academy application. Your entries are still here." };
+  const parsed = academyApplicationSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Check the required fields and try again." };
+
   const slug = slugify(parsed.data.slug || parsed.data.academyName);
+  if (!slug) return { error: "Enter a valid academy name and preferred slug." };
+  if (parsed.data.schoolId) {
+    const { data: school } = await supabase.from("schools").select("id").eq("id", parsed.data.schoolId).eq("visibility", "public").in("status", ["active", "published"]).maybeSingle();
+    if (!school) return { error: "Please select an available school." };
+  }
   const { data, error } = await supabase
     .from("academy_applications")
     .insert({
@@ -41,14 +48,6 @@ export async function submitAcademyApplicationAction(formData: FormData) {
     .select("id")
     .single();
 
-  if (!error && data) {
-    await supabase.from("review_queue").insert({
-      resource_type: "academy_application",
-      resource_id: data.id,
-      status: "open",
-    });
-  }
-
   await writeAuditEvent({
     actorId: user.id,
     action: "academy_application_submitted",
@@ -57,8 +56,8 @@ export async function submitAcademyApplicationAction(formData: FormData) {
     success: !error,
   });
 
-  if (error) redirect("/academies/start?error=submission");
-  redirect("/academy?submitted=academy");
+  if (error || !data) return { error: error?.code === "23505" ? "That academy name or slug is already in use. Please choose another." : "Your application could not be saved. Your entries are still here; please try again." };
+  return { success: true };
 }
 
 export async function submitInstructorApplicationAction(formData: FormData) {
