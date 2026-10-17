@@ -31,7 +31,7 @@ export async function DashboardShell({ children }: { children: React.ReactNode }
       <div className="flex items-center gap-2"><Link href="/help" aria-label="Help" title="Help" className="grid size-10 place-items-center rounded-md hover:bg-muted"><HelpCircle size={19} /></Link><form action="/auth/sign-out" method="post"><button type="submit" aria-label="Sign out" title="Sign out" className="grid size-10 place-items-center rounded-md hover:bg-muted"><LogOut size={19} /></button></form></div>
     </div></header>
     <div className="mx-auto grid max-w-7xl gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[14rem_minmax(0,1fr)]">
-      <aside><p className="mb-3 break-words px-3 text-sm">{user.email}</p>{platformRole && <p className="mb-4 px-3 text-xs font-semibold text-primary">Platform access: {platformRole}</p>}<WorkspaceSwitcher workspaces={workspaces} activeId={active} /><WorkspaceNavigation teaching={teaching} academy={academy} organization={organization} administrator={administrator} /></aside>
+      <aside className="min-w-0"><div className="mb-5 px-3"><p className="break-all text-xs text-muted-foreground">{user.email}</p>{platformRole && <p className="mt-1 text-xs font-medium">{platformRole}</p>}</div><WorkspaceSwitcher workspaces={workspaces} activeId={active} /><WorkspaceNavigation teaching={teaching} academy={academy} organization={organization} administrator={administrator} /></aside>
       <main className="min-w-0">{children}</main>
     </div>
   </div>;
