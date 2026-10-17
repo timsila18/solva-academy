@@ -5,6 +5,7 @@ import {
   addModuleAction,
   addResourceAction,
   submitCourseReviewAction,
+  saveCoursePriceAction,
 } from "@/features/courses/actions";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { PageHeading } from "@/components/dashboard/page-heading";
@@ -12,13 +13,34 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Field, Input, Select, TextArea } from "@/components/ui/form-fields";
 import { EmptyState } from "@/components/feedback/empty-state";
+import { requireUserOrRedirect } from "@/lib/authorization/server";
+import { canManageCourse } from "@/lib/courses/access";
+import { createServiceSupabaseClient } from "@/lib/supabase/server";
+import { notFound } from "next/navigation";
+import { VideoUpload } from "@/components/courses/video-upload";
+import { saveEpisodePriceAction } from "@/features/commerce/episode-actions";
 
 export default async function CourseBuilderPage({ params }: { params: Promise<{ courseId: string }> }) {
   const { courseId } = await params;
+  const user = await requireUserOrRedirect();
+  if (!await canManageCourse(courseId, user.id)) notFound();
+  const db = createServiceSupabaseClient();
+  const { data: course } = await db.from("courses").select("title").eq("id", courseId).single();
+  const { data: version } = await db.from("course_versions").select("id").eq("course_id", courseId).eq("status", "draft").order("version_number", { ascending: false }).limit(1).maybeSingle();
+  const { data: modules } = await db.from("course_modules").select("id,title").eq("course_id", courseId).order("display_order");
+  const { data: lessons } = await db.from("course_lessons").select("id,title,lesson_type").eq("course_id", courseId).order("display_order");
   return (
     <DashboardShell>
-      <PageHeading title="Course builder" description="Build identity, outcomes, curriculum, resources, assessments, review workflow, and publishing-ready versions." />
+      <PageHeading title={course?.title ?? "Course builder"} description="Curriculum and lesson videos" />
       <div className="grid gap-5">
+        <section className="border-y border-border py-5">
+          <h2 className="font-semibold">Full course price</h2>
+          <form action={saveCoursePriceAction} className="mt-4 flex flex-wrap items-end gap-4">
+            <input type="hidden" name="courseId" value={courseId} />
+            <Field label="Price in KES"><Input name="amountKes" type="number" min="0" max="1000000" step="1" required /></Field>
+            <Button type="submit">Save price</Button>
+          </form>
+        </section>
         <Card id="outcomes">
           <h2 className="font-semibold">Learning outcomes</h2>
           <form action={addLearningOutcomeAction} className="mt-4 grid gap-4 md:grid-cols-2">
@@ -36,7 +58,7 @@ export default async function CourseBuilderPage({ params }: { params: Promise<{ 
           <form action={addModuleAction} className="mt-4 grid gap-4 md:grid-cols-2">
             <input type="hidden" name="courseId" value={courseId} />
             <Field label="Module title"><Input name="title" required /></Field>
-            <Field label="Version ID"><Input name="versionId" /></Field>
+            <input type="hidden" name="versionId" value={version?.id ?? ""} />
             <Field label="Estimated minutes"><Input name="estimatedDurationMinutes" type="number" defaultValue="0" /></Field>
             <Field label="Display order"><Input name="displayOrder" type="number" defaultValue="1" /></Field>
             <Field label="Description"><TextArea name="description" /></Field>
@@ -46,8 +68,8 @@ export default async function CourseBuilderPage({ params }: { params: Promise<{ 
           </form>
           <form action={addLessonAction} className="mt-6 grid gap-4 border-t border-border pt-6 md:grid-cols-2">
             <input type="hidden" name="courseId" value={courseId} />
-            <Field label="Module ID"><Input name="moduleId" required /></Field>
-            <Field label="Version ID"><Input name="versionId" /></Field>
+            <Field label="Module"><Select name="moduleId" required><option value="">Choose a module</option>{modules?.map((module) => <option key={module.id} value={module.id}>{module.title}</option>)}</Select></Field>
+            <input type="hidden" name="versionId" value={version?.id ?? ""} />
             <Field label="Lesson title"><Input name="title" required /></Field>
             <Field label="Slug"><Input name="slug" required /></Field>
             <Field label="Lesson type"><Select name="lessonType"><option>text</option><option>video</option><option>audio</option><option>pdf</option><option>quiz</option><option>assignment</option><option>practice_activity</option></Select></Field>
@@ -59,6 +81,9 @@ export default async function CourseBuilderPage({ params }: { params: Promise<{ 
           </form>
         </Card>
 
+        <section className="divide-y divide-border border-y border-border">
+          {lessons?.map((lesson) => <section key={lesson.id} className="py-4"><h3 className="font-medium">{lesson.title}</h3>{lesson.lesson_type === "video" && <VideoUpload courseId={courseId} lessonId={lesson.id} />}<form action={saveEpisodePriceAction} className="mt-3 flex flex-wrap items-end gap-3"><input type="hidden" name="courseId" value={courseId} /><input type="hidden" name="lessonId" value={lesson.id} /><Field label="Individual class price (KES)"><Input name="amountKes" type="number" min="1" max="1000000" step="1" required /></Field><Button type="submit" variant="outline">Save class price</Button></form></section>)}
+        </section>
         <Card id="resources">
           <h2 className="font-semibold">Resource library</h2>
           <form action={addResourceAction} className="mt-4 grid gap-4 md:grid-cols-2">

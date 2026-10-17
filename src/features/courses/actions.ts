@@ -3,8 +3,10 @@
 import { redirect } from "next/navigation";
 import { writeAuditEvent } from "@/lib/audit/audit";
 import { requireUser } from "@/lib/authorization/server";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServerSupabaseClient, createServiceSupabaseClient } from "@/lib/supabase/server";
+import { z } from "zod";
 import { slugify } from "@/lib/utils";
+import { canManageCourse } from "@/lib/courses/access";
 import {
   assessmentSchema,
   createCourseSchema,
@@ -99,6 +101,7 @@ export async function addModuleAction(formData: FormData) {
   const user = await requireUser();
   const parsed = moduleSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) redirect("/courses/builder?error=module");
+  if (!await canManageCourse(parsed.data.courseId, user.id)) redirect("/instructor/courses?error=access");
 
   const supabase = await createServerSupabaseClient();
   const { error } = await supabase.from("course_modules").insert({
@@ -120,8 +123,11 @@ export async function addLessonAction(formData: FormData) {
   const user = await requireUser();
   const parsed = lessonSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) redirect("/courses/builder?error=lesson");
+  if (!await canManageCourse(parsed.data.courseId, user.id)) redirect("/instructor/courses?error=access");
 
   const supabase = await createServerSupabaseClient();
+  const { data: module } = await supabase.from("course_modules").select("id,version_id").eq("id", parsed.data.moduleId).eq("course_id", parsed.data.courseId).single();
+  if (!module || !module.version_id || module.version_id !== parsed.data.versionId) redirect(`/courses/builder/${parsed.data.courseId}?error=module`);
   const { error } = await supabase.from("course_lessons").insert({
     course_id: parsed.data.courseId,
     module_id: parsed.data.moduleId,
@@ -221,7 +227,36 @@ export async function publishCourseAction(formData: FormData) {
     actor: user.id,
     reason: parsed.data.reason || null,
   });
+  if (!error) {
+    await createServiceSupabaseClient().from("course_products").update({ published_version_id: parsed.data.versionId }).eq("course_id", parsed.data.courseId);
+  }
 
   await writeAuditEvent({ actorId: user.id, action: "course_publish_requested", resourceType: "course", resourceId: parsed.data.courseId, reason: parsed.data.reason, success: !error });
   redirect(error ? "/admin/courses?error=publish" : "/admin/courses?published=true");
+}
+
+export async function saveCoursePriceAction(formData: FormData) {
+  const user = await requireUser();
+  const parsed = z.object({ courseId: z.uuid(), amountKes: z.coerce.number().int().min(0).max(1000000) }).safeParse(Object.fromEntries(formData));
+  if (!parsed.success) redirect("/instructor/courses?error=price");
+  const { courseId, amountKes } = parsed.data;
+  if (!await canManageCourse(courseId, user.id)) redirect("/instructor/courses?error=access");
+  const db = createServiceSupabaseClient();
+  const { data: course } = await db.from("courses").select("title,short_description").eq("id", courseId).single();
+  if (!course) redirect("/instructor/courses?error=course");
+  const { data: linked } = await db.from("course_products").select("product_id").eq("course_id", courseId).limit(1).maybeSingle();
+  let productId = linked?.product_id;
+  if (!productId) {
+    const { data: product, error } = await db.from("products").insert({ product_type: "course", name: course.title, description: course.short_description, status: "active" }).select("id").single();
+    if (error || !product) redirect(`/courses/builder/${courseId}?error=price`);
+    productId = product.id;
+    const { error: linkError } = await db.from("course_products").insert({ course_id: courseId, product_id: productId });
+    if (linkError) redirect(`/courses/builder/${courseId}?error=price`);
+  }
+  const { data: price, error } = await db.from("product_prices").insert({ product_id: productId, amount_minor: amountKes * 100, currency: "KES", status: "active", enrollment_available: true }).select("id").single();
+  if (error || !price) redirect(`/courses/builder/${courseId}?error=price`);
+  const { error: archiveError } = await db.from("product_prices").update({ status: "inactive" }).eq("product_id", productId).neq("id", price.id).eq("status", "active");
+  if (archiveError) redirect(`/courses/builder/${courseId}?error=price`);
+  await writeAuditEvent({ actorId: user.id, action: "course_price_saved", resourceType: "course", resourceId: courseId, newData: { amountMinor: amountKes * 100, currency: "KES" } });
+  redirect(`/courses/builder/${courseId}?saved=price`);
 }

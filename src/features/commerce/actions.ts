@@ -2,9 +2,9 @@
 
 import { redirect } from "next/navigation";
 import { writeAuditEvent } from "@/lib/audit/audit";
-import { requireUser } from "@/lib/authorization/server";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { initiateMpesaStkPush, normalizeKenyanPhone } from "@/lib/payments/mpesa";
+import { requireUser, requireUserOrRedirect } from "@/lib/authorization/server";
+import { createServerSupabaseClient, createServiceSupabaseClient } from "@/lib/supabase/server";
+import { initiateMpesaStkPush, isMpesaConfigured, normalizeKenyanPhone } from "@/lib/payments/mpesa";
 import { assignmentSubmissionSchema, checkoutSchema, paymentSchema, progressSchema, quizAttemptSchema, refundRequestSchema } from "@/lib/validation/commerce";
 
 function orderNumber() {
@@ -12,13 +12,16 @@ function orderNumber() {
 }
 
 export async function createCheckoutAction(formData: FormData) {
-  const user = await requireUser();
+  const user = await requireUserOrRedirect();
   const parsed = checkoutSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) redirect("/courses?error=checkout");
 
-  const supabase = await createServerSupabaseClient();
-  const { data: price, error: priceError } = await supabase.from("product_prices").select("*").eq("id", parsed.data.priceId).eq("status", "active").single();
+  const supabase = createServiceSupabaseClient();
+  const { data: price, error: priceError } = await supabase.from("product_prices").select("*").eq("id", parsed.data.priceId).eq("product_id", parsed.data.productId).eq("status", "active").eq("enrollment_available", true).single();
   if (priceError || !price) redirect(`/courses/${parsed.data.courseId}?error=price`);
+  if (new Date(price.starts_at) > new Date() || (price.ends_at && new Date(price.ends_at) <= new Date())) redirect("/courses?error=price");
+  const { data: published } = await supabase.from("courses").select("id").eq("id", parsed.data.courseId).eq("status", "published").eq("visibility", "public").single();
+  if (!published) redirect("/courses?error=unavailable");
 
   const amountMinor = price.promotional_amount_minor ?? price.amount_minor;
   const { data: courseProduct } = await supabase
@@ -27,18 +30,19 @@ export async function createCheckoutAction(formData: FormData) {
     .eq("product_id", parsed.data.productId)
     .eq("course_id", parsed.data.courseId)
     .maybeSingle();
+  if (!courseProduct?.published_version_id) redirect("/courses?error=unavailable");
   const { data: order, error } = await supabase.from("orders").insert({
     order_number: orderNumber(),
     customer_id: user.id,
     currency: price.currency,
     subtotal_minor: amountMinor,
     grand_total_minor: amountMinor,
-    status: amountMinor === 0 ? "pending_payment" : "pending_payment",
+    status: "pending_payment",
     payment_status: "unpaid",
   }).select("id").single();
   if (error || !order) redirect(`/courses/${parsed.data.courseId}?error=order`);
 
-  await supabase.from("order_items").insert({
+  const { error: itemError } = await supabase.from("order_items").insert({
     order_id: order.id,
     product_id: parsed.data.productId,
     course_id: parsed.data.courseId,
@@ -49,40 +53,19 @@ export async function createCheckoutAction(formData: FormData) {
     access_duration_days: price.access_duration_days,
     refund_policy_snapshot: price.refund_policy,
   });
+  if (itemError) redirect("/courses?error=order_item");
+  if (amountMinor === 0) {
+    const { error: accessError } = await supabase.rpc("complete_order_access", { target_order_id: order.id, actor: user.id });
+    if (accessError) redirect("/courses?error=enrollment");
+    redirect(`/learn/${parsed.data.courseId}`);
+  }
 
   await writeAuditEvent({ actorId: user.id, action: "checkout_created", resourceType: "order", resourceId: order.id, success: true });
   redirect(`/checkout/${order.id}`);
 }
 
 export async function enrollFreeCourseAction(formData: FormData) {
-  const user = await requireUser();
-  const parsed = checkoutSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) redirect("/courses?error=free");
-  const supabase = await createServerSupabaseClient();
-  const { data: price } = await supabase.from("product_prices").select("*").eq("id", parsed.data.priceId).single();
-  if (!price || (price.promotional_amount_minor ?? price.amount_minor) !== 0) redirect(`/checkout?error=not_free`);
-
-  const { data: order } = await supabase.from("orders").insert({
-    order_number: orderNumber(),
-    customer_id: user.id,
-    currency: price.currency,
-    status: "paid",
-    payment_status: "paid",
-    source: "free_enrollment",
-    paid_at: new Date().toISOString(),
-  }).select("id").single();
-  if (!order) redirect("/courses?error=free_order");
-
-  await supabase.from("order_items").insert({
-    order_id: order.id,
-    product_id: parsed.data.productId,
-    course_id: parsed.data.courseId,
-    quantity: 1,
-    unit_price_minor: 0,
-    total_minor: 0,
-  });
-  await supabase.rpc("complete_order_access", { target_order_id: order.id, actor: user.id });
-  redirect(`/learn/${parsed.data.courseId}`);
+  return createCheckoutAction(formData);
 }
 
 export async function initiatePaymentAction(formData: FormData) {
@@ -91,20 +74,23 @@ export async function initiatePaymentAction(formData: FormData) {
   if (!parsed.success) redirect("/checkout?error=phone");
   const phone = normalizeKenyanPhone(parsed.data.phone);
   if (!phone) redirect(`/checkout/${parsed.data.orderId}?error=phone`);
+  if (!isMpesaConfigured()) redirect(`/checkout/${parsed.data.orderId}?error=unavailable`);
 
-  const supabase = await createServerSupabaseClient();
+  const supabase = createServiceSupabaseClient();
   const { data: order } = await supabase.from("orders").select("*").eq("id", parsed.data.orderId).eq("customer_id", user.id).single();
   if (!order) redirect("/checkout?error=order");
+  if (order.payment_status === "paid" || !["pending_payment", "failed"].includes(order.status)) redirect(`/checkout/${order.id}/status`);
   const idempotencyKey = `${order.id}:${phone}:${order.grand_total_minor}`;
-  const response = await initiateMpesaStkPush({
+  let response;
+  try { response = await initiateMpesaStkPush({
     amountMinor: order.grand_total_minor,
     phone,
     accountReference: order.order_number,
     description: "Solva Academy course payment",
-  });
+  }); } catch { redirect(`/checkout/${order.id}?error=provider`); }
 
   const responseRecord = response as { MerchantRequestID?: string; CheckoutRequestID?: string };
-  const { data: attempt } = await supabase.from("payment_attempts").insert({
+  const { data: attempt, error: attemptError } = await supabase.from("payment_attempts").insert({
     order_id: order.id,
     provider: "mpesa",
     method: "mpesa_stk",
@@ -118,6 +104,7 @@ export async function initiatePaymentAction(formData: FormData) {
     raw_response: response,
     initiated_at: new Date().toISOString(),
   }).select("id").single();
+  if (attemptError || !attempt) redirect(`/checkout/${order.id}?error=recording`);
 
   await supabase.from("orders").update({ status: "payment_initiated", payment_status: "initiated" }).eq("id", order.id);
   await writeAuditEvent({ actorId: user.id, action: "payment_initiated", resourceType: "payment_attempt", resourceId: attempt?.id, success: true });
@@ -125,7 +112,7 @@ export async function initiatePaymentAction(formData: FormData) {
 }
 
 export async function saveCourseAction(formData: FormData) {
-  const user = await requireUser();
+  const user = await requireUserOrRedirect();
   const courseId = String(formData.get("courseId"));
   const supabase = await createServerSupabaseClient();
   await supabase.from("saved_courses").upsert({ user_id: user.id, course_id: courseId });

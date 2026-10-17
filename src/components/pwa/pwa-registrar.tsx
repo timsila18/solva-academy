@@ -3,17 +3,25 @@
 import { useEffect, useState } from "react";
 
 export function PwaRegistrar() {
-  const [offline, setOffline] = useState(() => (typeof navigator === "undefined" ? false : !navigator.onLine));
+  const [offline, setOffline] = useState(false);
 
   useEffect(() => {
-    const handleOnline = () => setOffline(false);
-    const handleOffline = () => setOffline(true);
+    let mounted = true;
+    const checkConnection = () => {
+      fetch("/api/health", { cache: "no-store", signal: AbortSignal.timeout(8000) })
+        .then((response) => { if (mounted) setOffline(!response.ok); })
+        .catch(() => { if (mounted) setOffline(true); });
+    };
+    const handleOnline = checkConnection;
+    const handleOffline = checkConnection;
+    if (!navigator.onLine) checkConnection();
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
     if ("serviceWorker" in navigator && process.env.NODE_ENV === "production") {
       navigator.serviceWorker.register("/sw.js").catch(() => undefined);
     }
     return () => {
+      mounted = false;
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
     };

@@ -4,12 +4,14 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Field, Input } from "@/components/ui/form-fields";
 
-export default function SignInPage() {
+export default async function SignInPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
+  const { error } = await searchParams;
   return (
     <section className="mx-auto max-w-md px-4 py-12">
       <Card>
         <h1 className="text-2xl font-semibold">Sign in</h1>
         <p className="mt-2 text-sm text-muted-foreground">Use email and password. Social sign-in is not enabled yet.</p>
+        {error && <p role="alert" className="mt-4 text-sm text-red-700">Unable to sign in. Check your email and password and try again.</p>}
         <form action={signInAction} className="mt-6 grid gap-4">
           <Field label="Email">
             <Input name="email" type="email" autoComplete="email" required />

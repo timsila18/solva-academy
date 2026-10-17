@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { normalizeKenyanPhone, parseMpesaCallback } from "@/lib/payments/mpesa";
+import { normalizeKenyanPhone, parseMpesaCallback, initiateMpesaStkPush } from "@/lib/payments/mpesa";
 
 describe("M-Pesa helpers", () => {
+  it("never simulates a payment when credentials are missing", async () => {
+    await expect(initiateMpesaStkPush({ amountMinor: 10000, phone: "0712345678", accountReference: "test", description: "test" })).rejects.toThrow();
+  });
   it("normalizes Kenyan mobile numbers for STK push", () => {
     expect(normalizeKenyanPhone("0712 345 678")).toBe("254712345678");
     expect(normalizeKenyanPhone("+254 112 345 678")).toBe("254112345678");

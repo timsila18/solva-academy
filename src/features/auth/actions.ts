@@ -21,6 +21,7 @@ export async function signUpAction(formData: FormData) {
         country: parsed.data.country,
         preferred_language: parsed.data.preferredLanguage,
         age_bracket: parsed.data.ageBracket,
+        phone: parsed.data.phone || null,
       },
     },
   });
@@ -34,6 +35,7 @@ export async function signUpAction(formData: FormData) {
   });
 
   if (error) redirect("/auth/sign-up?error=auth");
+  if (data.session) redirect("/learner");
   redirect("/auth/check-email");
 }
 

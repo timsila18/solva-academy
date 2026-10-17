@@ -56,17 +56,14 @@ export async function initiateMpesaStkPush({
 }) {
   const env = getEnv();
   const normalizedPhone = normalizeKenyanPhone(phone);
+  if (!isMpesaConfigured()) throw new Error("M-Pesa payments are not available yet. Please contact support.");
   if (!normalizedPhone) throw new Error("Enter a valid Kenyan M-Pesa phone number.");
+  if (!Number.isSafeInteger(amountMinor) || amountMinor <= 0 || amountMinor % 100 !== 0) {
+    throw new Error("M-Pesa payments must be a positive whole Kenyan shilling amount.");
+  }
 
   if (!process.env.MPESA_CONSUMER_KEY || !process.env.MPESA_CONSUMER_SECRET || !process.env.MPESA_SHORTCODE || !process.env.MPESA_PASSKEY) {
-    return {
-      simulated: true,
-      MerchantRequestID: `SIM-${accountReference}`,
-      CheckoutRequestID: `SIM-${Date.now()}`,
-      ResponseCode: "0",
-      ResponseDescription: "Simulated STK initiation. Configure Daraja credentials for live STK.",
-      CustomerMessage: "Simulated request accepted.",
-    };
+    throw new Error("M-Pesa payments are not available yet. Please contact support.");
   }
 
   const baseUrl = process.env.MPESA_ENV === "production" ? "https://api.safaricom.co.ke" : "https://sandbox.safaricom.co.ke";
@@ -94,12 +91,21 @@ export async function initiateMpesaStkPush({
       PartyA: normalizedPhone,
       PartyB: process.env.MPESA_SHORTCODE,
       PhoneNumber: normalizedPhone,
-      CallBackURL: process.env.MPESA_CALLBACK_URL ?? `${env.NEXT_PUBLIC_APP_URL}/api/payments/mpesa/callback`,
+      CallBackURL: `${process.env.MPESA_CALLBACK_URL ?? `${env.NEXT_PUBLIC_APP_URL}/api/payments/mpesa/callback`}?token=${encodeURIComponent(process.env.MPESA_CALLBACK_TOKEN!)}`,
       AccountReference: accountReference,
       TransactionDesc: description,
     }),
   });
 
   if (!response.ok) throw new Error("M-Pesa STK initiation failed.");
-  return response.json();
+  const result = await response.json();
+  if (result.ResponseCode !== "0" || !result.CheckoutRequestID) {
+    throw new Error("M-Pesa did not accept the request. Please try again.");
+  }
+  return result;
+}
+
+export function isMpesaConfigured() {
+  return ["MPESA_CONSUMER_KEY", "MPESA_CONSUMER_SECRET", "MPESA_SHORTCODE", "MPESA_PASSKEY", "MPESA_CALLBACK_TOKEN"]
+    .every((key) => Boolean(process.env[key]));
 }

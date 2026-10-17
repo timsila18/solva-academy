@@ -3,7 +3,8 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Field, Input, Select } from "@/components/ui/form-fields";
 
-export default function SignUpPage() {
+export default async function SignUpPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
+  const { error } = await searchParams;
   return (
     <section className="mx-auto max-w-2xl px-4 py-12">
       <Card>
@@ -11,6 +12,7 @@ export default function SignUpPage() {
         <p className="mt-2 text-sm text-muted-foreground">
           This creates one personal account and a learner workspace. Instructor, academy, parent, and employer capabilities can be added later.
         </p>
+        {error && <p role="alert" className="mt-4 text-sm text-red-700">{error === "validation" ? "Check the required fields and make sure your passwords match." : "We could not create your account. If you already registered, sign in. Otherwise, try again shortly."}</p>}
         <form action={signUpAction} className="mt-6 grid gap-4 sm:grid-cols-2">
           <Field label="Full name">
             <Input name="fullName" autoComplete="name" required />
