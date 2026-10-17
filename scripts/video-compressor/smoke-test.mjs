@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readFile, mkdir, rm } from "node:fs/promises";
+import { readFile, mkdir, rm, readdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import ffmpeg from "ffmpeg-static";
 import { encodingArguments, probeVideo } from "./engine.mjs";
@@ -14,9 +14,10 @@ assert.equal(generated.status,0,generated.stderr);
 assert.throws(()=>encodingArguments("input","output","invalid",false));
 const bytes=await readFile(source);
 const originalHash=createHash("sha256").update(bytes).digest("hex");
+const beforeScratch=await readdir(resolve(".local/video-compressor")).catch(()=>[]);
 const port=4321;
 const base=`http://127.0.0.1:${port}`;
-const child=spawn(process.execPath,["scripts/video-compressor/server.mjs"],{env:{...process.env,VIDEO_COMPRESSOR_PORT:String(port)},windowsHide:true,stdio:["ignore","pipe","pipe"]});
+const child=spawn(process.execPath,["scripts/video-compressor/server.mjs"],{env:{...process.env,VIDEO_COMPRESSOR_PORT:String(port),VIDEO_COMPRESSOR_TEST_MODE:"1",VIDEO_COMPRESSOR_TEST_SOURCE:source},windowsHide:true,stdio:["ignore","pipe","pipe"]});
 let output="";child.stdout.on("data",b=>{output+=b;});child.stderr.on("data",b=>{output+=b;});
 const files=[];
 try{
@@ -27,8 +28,11 @@ try{
   const headers={"x-compressor-key":key,origin:base};
   assert.equal((await fetch(base+"/api/jobs")).status,403);
   assert.equal((await fetch(base+"/api/jobs?profile=balanced",{method:"POST",headers:{...headers,origin:"https://attacker.example"},body:"x"})).status,403);
-  assert.equal((await fetch(base+"/api/jobs?profile=unknown",{method:"POST",headers,body:"x"})).status,400);
-  async function create(profile){const r=await fetch(base+`/api/jobs?profile=${profile}&name=Source.avi&sample=true`,{method:"POST",headers,body:bytes});assert.equal(r.status,202);return r.json();}
+  const picked=await(await fetch(base+"/api/sources",{method:"POST",headers})).json();assert.ok(picked.id);assert.equal(picked.bytes,bytes.length);assert.equal(picked.path,undefined);
+  assert.equal((await fetch(base+"/api/jobs",{method:"POST",headers,body:JSON.stringify({sourceId:picked.id,profile:"unknown"})})).status,400);
+  assert.equal((await fetch(base+"/api/jobs",{method:"POST",headers,body:JSON.stringify({sourceId:"C:/Windows/win.ini",profile:"balanced"})})).status,400);
+  assert.equal((await fetch(base+"/api/jobs",{method:"POST",headers,body:bytes})).status,413);
+  async function create(profile){const r=await fetch(base+"/api/jobs",{method:"POST",headers,body:JSON.stringify({sourceId:picked.id,profile,sample:true})});assert.equal(r.status,202);return r.json();}
   async function poll(id){for(let i=0;i<150;i++){const job=await(await fetch(base+"/api/jobs/"+id,{headers})).json();if(["done","failed","cancelled"].includes(job.state))return job;await new Promise(r=>setTimeout(r,200));}throw new Error("Compression timed out");}
   const first=await create("balanced");
   const finished=await poll(first.id);assert.equal(finished.state,"done",finished.error);files.push(finished.outputPath);
@@ -40,10 +44,11 @@ try{
   const cancelled=await create("quality");
   await fetch(base+"/api/jobs/"+cancelled.id,{method:"DELETE",headers});
   const stopped=await poll(cancelled.id);assert.equal(stopped.state,"cancelled");
-  const invalid=await fetch(base+"/api/jobs?profile=balanced&name=bad.mp4",{method:"POST",headers,body:"This is not a video"});
-  const invalidJob=await invalid.json();assert.equal((await poll(invalidJob.id)).state,"failed");
+  const invalidFile=join(folder,"invalid.mp4");await writeFile(invalidFile,"This is not a video");
+  await assert.rejects(probeVideo(invalidFile));
   assert.equal(createHash("sha256").update(await readFile(source)).digest("hex"),originalHash,"Original changed");
-  console.log(JSON.stringify({passed:true,sourceBytes:bytes.length,compressedBytes:finished.outputBytes,durationSeconds:info.duration,checks:["real FFmpeg compression","H.264 playback metadata","original preserved","range streaming","cancellation","invalid video","token access","origin rejection"]}));
+  const afterScratch=await readdir(resolve(".local/video-compressor"));assert.deepEqual(afterScratch.sort(),beforeScratch.sort(),"An original-copy staging directory was created");
+  console.log(JSON.stringify({passed:true,sourceBytes:bytes.length,compressedBytes:finished.outputBytes,durationSeconds:info.duration,checks:["direct-source FFmpeg compression","no original staging copy","raw video upload rejected","arbitrary source paths rejected","original preserved","range streaming","cancellation","invalid video","token access","origin rejection"]}));
 }finally{
   child.kill();
   await new Promise(r=>child.once("close",r));

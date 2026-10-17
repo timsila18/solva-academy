@@ -6,7 +6,7 @@ browser-WASM compressor. It does not upload originals or results to any cloud.
 
 ## Workflow
 
-1. Choose a source video up to 8 GB.
+1. Click Choose video and select a source up to 8 GB in the Windows file picker.
 2. Choose Balanced (up to 1080p, 2 Mbps), Higher quality (1080p CRF 21, variable
    size), or Smaller file (up to 720p, 1 Mbps).
 3. Leave the 60-second sample checkbox selected for the first quality check.
@@ -14,12 +14,13 @@ browser-WASM compressor. It does not upload originals or results to any cloud.
    sample option and compress the full lesson once the settings are suitable.
 5. Output copies are saved in `C:\Solva Academy\compressed-videos` on this machine.
 
-Source files are never modified. The browser streams a working copy to local disk,
-not into a single JavaScript array buffer. The source-sized temporary copy plus
-output require free disk space. Temporary inputs are removed after completion,
-failure or cancellation. An abrupt process/machine shutdown may leave scratch
-directories under `.local/video-compressor`; completed outputs remain available
-on disk. Only one encoding job runs at a time. Refresh reconnects to the current
+Source files are never modified, copied, staged or uploaded. Native FFmpeg reads
+the selected original directly and writes only the compressed output. The browser
+sends an opaque selected-file reference and compression settings, not video bytes.
+There is no source-sized temporary copy. Only output space is required. Logs remain
+under `.local/video-compressor`; completed compressed outputs remain available
+on disk. The direct-file picker currently requires Windows. Only one encoding
+job runs at a time. Refresh reconnects to the current
 session; a server restart clears in-memory history but preserves saved outputs.
 
 HDR inputs are rejected to avoid silently producing incorrect colours. Ask the
@@ -31,8 +32,9 @@ and source frame rate is not overridden. Output is H.264/AAC MP4 with faststart.
 
 The helper binds only to 127.0.0.1, validates Host and mutation Origin, requires a
 per-process random API token, embeds no cloud credentials, and disables framing.
-Native processes use argument arrays with no shell interpolation. Job directories
-are generated UUIDs within a checked scratch root. Native media decoders use a
+Native processes use argument arrays with no shell interpolation. Only files
+explicitly chosen in the native picker can be submitted; arbitrary input paths
+in HTTP requests and raw video uploads are rejected. Native media decoders use a
 file/pipe protocol allowlist. Only the uploader's own trusted recordings should
 be processed; keep native decoder binaries patched. Files never transit Vercel.
 
@@ -50,8 +52,9 @@ Production upload-size/quota and resumable-upload changes are a separate task.
 ## Verification
 
 `node scripts/video-compressor/smoke-test.mjs` generates and compresses a real
-six-second video, checks H.264 and duration, confirms source hash preservation,
-tests range playback, cancellation, invalid-video handling, token enforcement
+six-second video, checks H.264 and duration, confirms source hash preservation
+and absence of original-copy staging, and tests raw-upload/path rejection,
+range playback, cancellation, invalid-video handling, token enforcement
 and cross-origin rejection. Vitest covers encoding presets and form semantics.
 A real 4 GB recording has not yet been supplied, so its visual quality, duration
 and encoding time remain unverified. No browser screenshot QA was performed.

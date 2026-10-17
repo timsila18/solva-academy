@@ -1,12 +1,11 @@
 import { createServer } from "node:http";
 import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
-import { readFile, mkdir, rm, stat } from "node:fs/promises";
-import { createWriteStream, createReadStream } from "node:fs";
-import { pipeline } from "node:stream/promises";
-import { Transform } from "node:stream";
+import { readFile, mkdir, rm, stat, realpath } from "node:fs/promises";
+import { createReadStream } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { resolve, join, basename } from "node:path";
 import { probeVideo, encodeVideo, profiles } from "./engine.mjs";
+import { pickSource } from "./source-picker.mjs";
 
 const ROOT = fileURLToPath(new URL("../../", import.meta.url));
 const scratch = join(ROOT, ".local/video-compressor");
@@ -18,6 +17,8 @@ if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error("Inv
 const origin = `http://127.0.0.1:${port}`;
 const MAX_SOURCE = 8 * 1024 ** 3;
 const jobs = new Map();
+const sources = new Map();
+let selecting = false;
 await mkdir(scratch, { recursive: true });
 await mkdir(outputDir, { recursive: true });
 function authorized(value) {
@@ -30,9 +31,13 @@ function publicJob(job) {
     academyUploadLimitBytes: 100 * 1024 * 1024 };
 }
 function json(res, status, value) { res.writeHead(status, { "Content-Type": "application/json" }); res.end(JSON.stringify(value)); }
-async function removeScratch(directory) {
-  if (!resolve(directory).startsWith(resolve(scratch) + (process.platform === "win32" ? "\\" : "/")) || !/^[a-f0-9-]{36}$/.test(basename(directory))) throw new Error("Invalid temporary directory.");
-  await rm(directory, { recursive: true, force: true });
+async function readJson(req) {
+  let body = "";
+  for await (const chunk of req) {
+    body += chunk;
+    if (body.length > 2048) throw new Error("Only compression settings can be submitted, not video bytes.");
+  }
+  return JSON.parse(body);
 }
 
 async function compress(job) {
@@ -54,9 +59,6 @@ async function compress(job) {
     job.state = job.controller.signal.aborted ? "cancelled" : "failed";
     job.error = job.state === "cancelled" ? "Compression cancelled. Original file unchanged." : error.message;
     await rm(job.output, { force: true }).catch(() => {});
-  } finally {
-    // Only this job's generated directory is removed; the original is never opened for writing.
-    await removeScratch(job.directory).catch(() => {});
   }
 }
 
@@ -79,43 +81,46 @@ const server = createServer(async (req, res) => {
     if (!authorized(req.headers["x-compressor-key"] ?? url.searchParams.get("key"))) return json(res, 403, { error: "Open the compressor on this computer first." });
     if (["POST", "DELETE"].includes(req.method) && req.headers.origin !== origin) return json(res, 403, { error: "Request origin rejected." });
     if (req.method === "GET" && url.pathname === "/api/jobs") return json(res, 200, [...jobs.values()].map(publicJob));
+    if (req.method === "POST" && url.pathname === "/api/sources") {
+      if (selecting) return json(res, 409, { error: "A file selection window is already open." });
+      if (sources.size >= 20) return json(res, 409, { error: "Restart the compressor to clear selected-file references." });
+      selecting = true;
+      try {
+        const selected = await pickSource();
+        if (selected.cancelled) return json(res, 200, { cancelled: true });
+        const path = await realpath(selected.path);
+        const info = await stat(path);
+        if (!info.isFile() || info.size <= 0 || info.size > MAX_SOURCE) return json(res, 413, { error: "Choose a video up to 8 GB." });
+        const source = { id: randomUUID(), path, name: basename(path), bytes: info.size, mtime: info.mtimeMs };
+        sources.set(source.id, source);
+        return json(res, 200, { id: source.id, name: source.name, bytes: source.bytes });
+      } finally { selecting = false; }
+    }
     if (req.method === "POST" && url.pathname === "/api/jobs") {
-      if ([...jobs.values()].some((job) => ["reading", "inspecting", "compressing"].includes(job.state))) return json(res, 409, { error: "Finish or cancel the current video first." });
-      const profile = url.searchParams.get("profile");
+      if ([...jobs.values()].some((job) => ["inspecting", "compressing"].includes(job.state))) return json(res, 409, { error: "Finish or cancel the current video first." });
+      if (Number(req.headers["content-length"]) > 2048) return json(res, 413, { error: "Video bytes are not accepted. Choose a local source and submit settings only." });
+      let settings;
+      try { settings = await readJson(req); } catch { return json(res, 400, { error: "Invalid compression settings." }); }
+      const { profile, sourceId } = settings;
       if (!Object.hasOwn(profiles, profile)) return json(res, 400, { error: "Choose a compression preset." });
-      const bytes = Number(req.headers["content-length"]);
-      if (!Number.isSafeInteger(bytes) || bytes <= 0 || bytes > MAX_SOURCE) return json(res, 413, { error: "Select a video up to 8 GB." });
+      const source = sources.get(sourceId);
+      if (!source) return json(res, 400, { error: "Choose the video from the file selection window first." });
+      const info = await stat(source.path);
+      if (info.size !== source.bytes || info.mtimeMs !== source.mtime) return json(res, 409, { error: "The selected file changed. Choose it again." });
       if (jobs.size >= 20) return json(res, 409, { error: "Restart the compressor to clear the session history." });
       const id = randomUUID();
-      const directory = join(scratch, id);
-      await mkdir(directory);
-      const name = basename(url.searchParams.get("name") ?? "class").replace(/[^a-zA-Z0-9 _.-]/g, "_").slice(0, 90).replace(/\.[^.]+$/, "") || "class";
-      const sample = url.searchParams.get("sample") === "true";
-      const job = { id, name, profile, sample, state: "reading", progress: 0, sourceBytes: bytes, controller: new AbortController(),
-        directory, input: join(directory, "input.video"), output: join(outputDir, `${name}-${sample ? "sample" : "compressed"}-${id.slice(0, 8)}.mp4`) };
+      const name = source.name.replace(/[^a-zA-Z0-9 _.-]/g, "_").slice(0, 90).replace(/\.[^.]+$/, "") || "class";
+      const sample = settings.sample === true;
+      const job = { id, name, profile, sample, state: "inspecting", progress: 0, sourceBytes: source.bytes, controller: new AbortController(),
+        input: source.path, output: join(outputDir, `${name}-${sample ? "sample" : "compressed"}-${id.slice(0, 8)}.mp4`) };
       jobs.set(id, job);
-      let received = 0;
-      const guard = new Transform({ transform(chunk, _encoding, callback) {
-        received += chunk.length;
-        if (received > bytes || received > MAX_SOURCE) return callback(new Error("Source size exceeded the limit."));
-        callback(null, chunk);
-      } });
-      try {
-        await pipeline(req, guard, createWriteStream(job.input, { flags: "wx" }), { signal: job.controller.signal });
-        if (received !== bytes) throw new Error("The source file transfer was incomplete.");
-      } catch {
-        job.state = "failed"; job.error = "The video could not be read. Select it again.";
-        await removeScratch(directory);
-        if (!res.destroyed) json(res, 400, { error: job.error });
-        return;
-      }
       json(res, 202, publicJob(job)); void compress(job); return;
     }
     const match = /^\/api\/jobs\/([a-f0-9-]{36})(\/file)?$/.exec(url.pathname);
     const job = match && jobs.get(match[1]);
     if (!job) return json(res, 404, { error: "Video not found." });
     if (req.method === "DELETE" && !match[2]) {
-      if (["reading", "inspecting", "compressing"].includes(job.state)) job.controller.abort();
+      if (["inspecting", "compressing"].includes(job.state)) job.controller.abort();
       return json(res, 200, { cancelled: true });
     }
     if (req.method === "GET" && !match[2]) return json(res, 200, publicJob(job));
