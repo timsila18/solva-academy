@@ -19,6 +19,7 @@ import { notFound } from "next/navigation";
 import { VideoUpload } from "@/components/courses/video-upload";
 import { saveEpisodePriceAction } from "@/features/commerce/episode-actions";
 import { CourseVideoChecklist } from "@/components/courses/course-video-checklist";
+import Link from "next/link";
 
 export default async function CourseBuilderPage({ params }: { params: Promise<{ courseId: string }> }) {
   const { courseId } = await params;
@@ -38,15 +39,17 @@ export default async function CourseBuilderPage({ params }: { params: Promise<{ 
   const productIds = [...(courseProducts ?? []), ...(episodeProducts ?? [])].map((product) => product.product_id);
   const { data: prices } = productIds.length ? await db.from("product_prices").select("product_id,amount_minor").in("product_id", productIds).eq("status", "active").eq("currency", "KES").order("created_at", { ascending: false }) : { data: [] };
   const coursePrice = prices?.find((price) => courseProducts?.some((product) => product.product_id === price.product_id));
-  const { data: resources } = await db.from("course_resources").select("id,title,file_path").eq("course_id", courseId).eq("status", "active");
+  const { data: resources } = await db.from("course_resources").select("id,title,file_path,metadata").eq("course_id", courseId).eq("status", "active");
   const resourceLinks = await Promise.all((resources ?? []).map(async (resource) => {
-    const { data } = resource.file_path?.startsWith(`${courseId}/`) ? await db.storage.from("course-resources").createSignedUrl(resource.file_path, 3600) : { data: null };
+    const bucket = resource.metadata?.bucket === "course-authoring" ? "course-authoring" : "course-resources";
+    const { data } = resource.file_path?.startsWith(`${courseId}/`) ? await db.storage.from(bucket).createSignedUrl(resource.file_path, 3600) : { data: null };
     return { id: resource.id, title: resource.title, url: data?.signedUrl ?? null };
   }));
   return (
     <DashboardShell>
       <PageHeading title={course?.title ?? "Course builder"} description={course?.status === "draft" ? "Draft course · Not published" : "Course preparation"} />
       {coursePrice && <p className="mb-6 text-sm text-muted-foreground">Full programme: KSh {(coursePrice.amount_minor / 100).toLocaleString("en-KE")}</p>}
+      <Link href={`/courses/builder/${courseId}/checks`} className="mb-6 inline-block text-sm text-primary underline">Review knowledge checks & answers</Link>
       {lessonError || videoError ? <p role="alert">The class list could not load. Please refresh before uploading.</p> : <CourseVideoChecklist courseId={courseId} lessons={(lessons ?? []).map((lesson) => ({ ...lesson,
         videoAttached: Boolean(videos?.some((video) => video.lesson_id === lesson.id && video.content?.bucket === "course-media" && typeof video.content?.path === "string" && video.content.path.startsWith(`${courseId}/${lesson.id}/`))),
         priceKes: (prices?.find((price) => episodeProducts?.some((product) => product.lesson_id === lesson.id && product.product_id === price.product_id))?.amount_minor ?? 0) / 100 || null,
