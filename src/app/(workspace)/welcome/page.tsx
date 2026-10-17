@@ -7,8 +7,10 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 export default async function WelcomePage() {
   const user = await requireUserOrRedirect();
   const db = await createServerSupabaseClient();
+  const { data: administrator } = await db.rpc("current_user_has_permission", { permission_code: "settings.manage.platform" });
   const { data: applications } = await db.from("academy_applications").select("id,academy_name,status").eq("applicant_id", user.id).order("created_at", { ascending: false }).limit(5);
   const choices = [
+    ...(administrator === true ? [{ title: "Platform administration", text: "Manage schools, applications, users, and platform settings.", href: "/admin", Icon: Building2 }] : []),
     { title: "My learning", text: "Open your courses or find something new.", href: "/learner", Icon: BookOpen },
     { title: "Start an academy", text: "Apply, add your courses, and manage your academy.", href: "/academies/start", Icon: GraduationCap },
     { title: "Teach a course", text: "Apply to join as an instructor.", href: "/instructors/apply", Icon: Users },

@@ -27,6 +27,11 @@ const supabase = createClient(url, serviceRoleKey, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
 
+const { data: founder } = await supabase.from("platform_founder").select("user_id").limit(1).maybeSingle();
+if (founder) {
+  throw new Error("A founding administrator is configured. The legacy inspector setup cannot modify production roles or workspaces.");
+}
+
 const { data: listData, error: listError } = await supabase.auth.admin.listUsers({ page: 1, perPage: 1000 });
 if (listError) throw listError;
 let user = listData.users.find((candidate) => candidate.email?.toLowerCase() === email.toLowerCase());

@@ -20,9 +20,10 @@ export async function DashboardShell({ children }: { children: React.ReactNode }
   });
   const roles = (assignments.data ?? []).map((assignment) => (assignment.roles as unknown as { slug: string } | null)?.slug ?? "");
   const administrator = permission.data === true;
+  const platformRole = roles.includes("founding-super-admin") ? "Founding Super Admin" : roles.includes("super-admin") ? "Super Admin" : administrator ? "Platform Administrator" : null;
   const academy = workspaces.some((workspace) => workspace.type === "academy");
   const organization = workspaces.some((workspace) => workspace.type === "organization");
-  const teaching = academy || roles.some((role) => ["instructor", "academy-owner", "academy-administrator", "teaching-assistant"].includes(role));
+  const teaching = roles.some((role) => ["instructor", "academy-owner", "academy-administrator", "academy-content-manager", "teaching-assistant", "corporate-trainer"].includes(role));
   const active = workspaces.find((workspace) => workspace.id === preference.data?.active_workspace_id)?.id ?? workspaces[0]?.id ?? "";
   return <div className="min-h-screen bg-background">
     <header className="border-b border-border bg-card"><div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-3 px-4 sm:px-6">
@@ -30,7 +31,7 @@ export async function DashboardShell({ children }: { children: React.ReactNode }
       <div className="flex items-center gap-2"><Link href="/help" aria-label="Help" title="Help" className="grid size-10 place-items-center rounded-md hover:bg-muted"><HelpCircle size={19} /></Link><form action="/auth/sign-out" method="post"><button type="submit" aria-label="Sign out" title="Sign out" className="grid size-10 place-items-center rounded-md hover:bg-muted"><LogOut size={19} /></button></form></div>
     </div></header>
     <div className="mx-auto grid max-w-7xl gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[14rem_minmax(0,1fr)]">
-      <aside><WorkspaceSwitcher workspaces={workspaces} activeId={active} /><WorkspaceNavigation teaching={teaching || administrator} academy={academy || administrator} organization={organization || administrator} administrator={administrator} /></aside>
+      <aside><p className="mb-3 break-words px-3 text-sm">{user.email}</p>{platformRole && <p className="mb-4 px-3 text-xs font-semibold text-primary">Platform access: {platformRole}</p>}<WorkspaceSwitcher workspaces={workspaces} activeId={active} /><WorkspaceNavigation teaching={teaching} academy={academy} organization={organization} administrator={administrator} /></aside>
       <main className="min-w-0">{children}</main>
     </div>
   </div>;

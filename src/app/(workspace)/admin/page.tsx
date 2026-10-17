@@ -29,7 +29,7 @@ const adminAreas = [
 export default function AdminDashboardPage() {
   return (
     <DashboardShell>
-      <PageHeading title="Platform administration" description="Protected Admin shell for Solva Academy operations. Server-side authorization and RLS enforce real access once Supabase is configured." />
+      <PageHeading title="Platform administration" description="Manage Solva Academy. Academy and organization roles remain in their own workspaces." />
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {adminAreas.map(([title, href, description]) => (
           <Link key={href} href={href}>
