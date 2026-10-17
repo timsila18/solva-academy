@@ -8,7 +8,7 @@
 <form id="form"><section id="source-panel" class="source-picker" data-selected="false" aria-label="Selected video">
 <div id="source-empty"><span class="source-icon">__VIDEO_ICON__</span><h2>Choose a class video</h2></div>
 <div id="selected-meta" class="source-selected" hidden><span class="source-icon">__VIDEO_ICON__</span><div><p id="source-info">No video selected</p><p id="source-meta"></p></div><button id="clear" type="button">Clear</button></div>
-<div class="row"><button id="choose" type="button" aria-describedby="source-help">__FOLDER_ICON__<span id="choose-label">Choose video</span></button><button id="cancel-selection" type="button" hidden>Cancel selection</button></div><p id="source-help">MP4, MOV, MKV, WEBM or AVI · Up to 8 GB</p>
+<div class="row"><button id="choose" type="button" aria-describedby="source-help">__FOLDER_ICON__<span id="choose-label">Choose video</span></button><button id="cancel-selection" type="button" hidden>Cancel selection</button></div><p id="source-help">MP4, MOV, MKV, WEBM or AVI · Local file access</p>
 </section>
 <details id="source-preview-group" hidden><summary>Preview selected video</summary><video id="source-preview" controls preload="none" aria-label="Original video preview"></video><p id="source-preview-error" hidden>This source format cannot be previewed in this browser. The compressed MP4 can be previewed after encoding.</p></details>
 <label>Compression preset<select id="profile"><option value="balanced">Balanced · Up to 1080p · 2 Mbps</option><option value="quality">Higher quality · Up to 1080p · Variable size</option><option value="compact">Smaller file · Up to 720p · 1 Mbps</option></select></label>
@@ -17,7 +17,7 @@
 <div class="row"><button id="start" type="submit" disabled>Compress video</button><button id="cancel" type="button" disabled>Cancel</button></div>
 <progress id="progress" max="100" value="0" aria-label="Compression progress" hidden></progress><p id="status" role="status" aria-live="polite">Ready</p><p id="error" role="alert" hidden></p></form>
 <section id="result" hidden><h2>Compressed copy</h2><dl><dt>Original size</dt><dd id="original-size"></dd><dt>Output size</dt><dd id="output-size"></dd><dt>Saved to</dt><dd id="output-path"></dd></dl><video id="preview" controls preload="metadata" aria-label="Compressed video preview"></video><div class="row"><a id="download" class="download">Save a copy</a><a class="download" href="https://academy.solvaone.co.ke/academy/courses" target="_blank" rel="noopener noreferrer">Open Academy courses</a></div><p id="limit"></p></section>
-<footer>MP4 / H.264 / AAC · Source limit: 8 GB · Academy upload limit: 100 MB</footer></main>
+<footer>MP4 / H.264 / AAC · Direct local processing · Academy upload limit: 100 MB</footer></main>
 <script nonce="__NONCE__">
 const key="__TOKEN__";
 const el=id=>document.getElementById(id);

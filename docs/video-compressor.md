@@ -6,7 +6,7 @@ browser-WASM compressor. It does not upload originals or results to any cloud.
 
 ## Workflow
 
-1. Click Choose video and select a source up to 8 GB in the Windows file picker.
+1. Click Choose video and select the recording in the Windows file picker.
    The owner window is explicitly shown and activated so the picker can appear
    above the browser. Cancel selection aborts the native picker request. The
    selected-file panel shows name, size, duration and resolution, with optional
@@ -26,6 +26,11 @@ under `.local/video-compressor`; completed compressed outputs remain available
 on disk. The direct-file picker currently requires Windows. Only one encoding
 job runs at a time. Refresh reconnects to the current
 session; a server restart clears in-memory history but preserves saved outputs.
+
+The previous artificial 8 GB input cap was removed for direct local processing.
+Non-files, empty recordings and unreadable sources have distinct error messages.
+This does not change the Academy's separate 100 MB cloud-upload limit. Very large
+files still depend on the native decoder, file accessibility and output disk space.
 
 HDR inputs are rejected to avoid silently producing incorrect colours. Ask the
 editor for a colour-managed SDR export. High quality cannot be guaranteed from a

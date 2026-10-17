@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { resolve, join, basename } from "node:path";
 import { probeVideo, encodeVideo, profiles } from "./engine.mjs";
 import { pickSource } from "./source-picker.mjs";
+import { sourceFileError } from "./source-validation.mjs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { Video, FolderOpen } from "lucide-react";
@@ -20,7 +21,6 @@ const folderIcon = renderToStaticMarkup(createElement(FolderOpen, { size: 17, "a
 const port = Number(process.env.VIDEO_COMPRESSOR_PORT ?? 4318);
 if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error("Invalid compressor port.");
 const origin = `http://127.0.0.1:${port}`;
-const MAX_SOURCE = 8 * 1024 ** 3;
 const jobs = new Map();
 const sources = new Map();
 let selecting = false;
@@ -114,11 +114,19 @@ const server = createServer(async (req, res) => {
         if (selected.cancelled) return json(res, 200, { cancelled: true });
         const path = await realpath(selected.path);
         const info = await stat(path);
-        if (!info.isFile() || info.size <= 0 || info.size > MAX_SOURCE) return json(res, 413, { error: "Choose a video up to 8 GB." });
+        const fileError = sourceFileError(info);
+        if (fileError) return json(res, 400, { error: fileError });
         const metadata = await probeVideo(path, selectionController.signal);
         const source = { id: randomUUID(), path, name: basename(path), bytes: info.size, mtime: info.mtimeMs };
         sources.set(source.id, source);
         return json(res, 200, { id: source.id, name: source.name, bytes: source.bytes, duration: metadata.duration, width: metadata.width, height: metadata.height });
+      } catch (error) {
+        const message = error.code === "ENOENT" ? "The selected recording was moved or is unavailable. Choose it again."
+          : error.code === "EACCES" ? "This recording cannot be opened. Check its file permissions."
+          : error.name === "AbortError" ? "File selection cancelled."
+          : error.message || "The selected video could not be opened.";
+        if (!res.destroyed) return json(res, 400, { error: message });
+        return;
       } finally { selecting = false; res.off("close", cancelSelection); }
     }
     const sourceMatch = /^\/api\/sources\/([a-f0-9-]{36})\/file$/.exec(url.pathname);

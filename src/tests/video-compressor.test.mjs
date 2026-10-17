@@ -1,7 +1,14 @@
 import { expect, it, vi, afterEach } from "vitest";
 import { readFile } from "node:fs/promises";
 import { encodingArguments } from "../../scripts/video-compressor/engine.mjs";
+import { sourceFileError } from "../../scripts/video-compressor/source-validation.mjs";
 afterEach(()=>vi.restoreAllMocks());
+it("does not impose the old 8 GB cap and reports invalid sources accurately",()=>{
+  expect(sourceFileError({isFile:()=>true,size:12*1024**3})).toBeNull();
+  expect(sourceFileError({isFile:()=>true,size:0})).toContain("0 bytes");
+  expect(sourceFileError({isFile:()=>false,size:4096})).toContain("not a file");
+  expect(sourceFileError({isFile:()=>true,size:NaN})).toContain("size could not be read");
+});
 it("uses bounded 1080p H264 encoding without upscaling or forcing a new frame rate",()=>{
   const args=encodingArguments("source.mov","output.mp4","balanced",false);
   expect(args).toContain("libx264");expect(args).toContain("2000k");expect(args).toContain("128k");
@@ -26,6 +33,7 @@ it("has labelled controls, accessible progress and no third-party scripts",async
   expect(document.querySelector("#sample").checked).toBe(true);
   expect(html).toContain("100 MB upload limit");
   expect(html).toContain("No original-file copy or upload");
+  expect(html).not.toContain("Up to 8 GB");
   expect(html).not.toContain("xhr.send(file)");
   expect(document.querySelector("#start").disabled).toBe(true);
   expect(document.querySelector("#cancel-selection")).not.toBeNull();
