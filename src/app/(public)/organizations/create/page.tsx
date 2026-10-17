@@ -2,13 +2,18 @@ import { createOrganizationAction } from "@/features/tenants/actions";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Field, Input, Select, TextArea } from "@/components/ui/form-fields";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
+import Link from "next/link";
 
-export default function CreateOrganizationPage() {
+export default async function CreateOrganizationPage() {
+  const db = await createServerSupabaseClient();
+  const { data: { user } } = await db.auth.getUser();
+  if (!user) return <section className="mx-auto max-w-lg px-4 py-12"><h1 className="text-2xl font-semibold">Learning for your organization</h1><p className="mt-3 text-muted-foreground">Create an account or sign in to set up your organization.</p><div className="mt-6 flex gap-5"><Link href="/auth/sign-up?intent=organization" className="text-primary underline">Create account</Link><Link href="/auth/sign-in?next=%2Forganizations%2Fcreate" className="text-primary underline">Sign in</Link></div></section>;
   return (
     <section className="mx-auto max-w-3xl px-4 py-12 sm:px-6">
       <Card>
-        <h1 className="text-2xl font-semibold">Create organization workspace</h1>
-        <p className="mt-2 text-sm text-muted-foreground">Create an employer or institution workspace. Training assignments are deferred.</p>
+        <h1 className="text-2xl font-semibold">Set up your organization</h1>
+        <p className="mt-2 text-sm text-muted-foreground">Tell us about your organization and who will manage its learning.</p>
         <form action={createOrganizationAction} className="mt-6 grid gap-4 md:grid-cols-2">
           <Field label="Organization name"><Input name="name" required /></Field>
           <Field label="Slug"><Input name="slug" required /></Field>

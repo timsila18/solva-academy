@@ -5,6 +5,7 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { forgotPasswordSchema, signInSchema, signUpSchema } from "@/lib/validation/auth";
 import { getEnv } from "@/lib/config/env";
 import { writeAuditEvent } from "@/lib/audit/audit";
+import { journeyDestination, safeReturnPath } from "@/lib/auth/journeys";
 
 export async function signUpAction(formData: FormData) {
   const parsed = signUpSchema.safeParse(Object.fromEntries(formData));
@@ -22,6 +23,7 @@ export async function signUpAction(formData: FormData) {
         preferred_language: parsed.data.preferredLanguage,
         age_bracket: parsed.data.ageBracket,
         phone: parsed.data.phone || null,
+        onboarding_intent: parsed.data.intent,
       },
     },
   });
@@ -35,13 +37,14 @@ export async function signUpAction(formData: FormData) {
   });
 
   if (error) redirect("/auth/sign-up?error=auth");
-  if (data.session) redirect("/learner");
+  if (data.session) redirect(safeReturnPath(formData.get("next"), journeyDestination(parsed.data.intent)));
   redirect("/auth/check-email");
 }
 
 export async function signInAction(formData: FormData) {
+  const destination = safeReturnPath(formData.get("next"), "/welcome");
   const parsed = signInSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) redirect("/auth/sign-in?error=validation");
+  if (!parsed.success) redirect(`/auth/sign-in?error=validation&next=${encodeURIComponent(destination)}`);
 
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase.auth.signInWithPassword(parsed.data);
@@ -54,8 +57,8 @@ export async function signInAction(formData: FormData) {
     success: !error,
   });
 
-  if (error) redirect("/auth/sign-in?error=auth");
-  redirect("/learner");
+  if (error) redirect(`/auth/sign-in?error=auth&next=${encodeURIComponent(destination)}`);
+  redirect(destination);
 }
 
 export async function forgotPasswordAction(formData: FormData) {

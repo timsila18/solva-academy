@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { AuthenticationError, AuthorizationError } from "@/lib/errors/app-error";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { PermissionCode } from "@/types/platform";
+import { safeReturnPath } from "@/lib/auth/journeys";
 
 export async function requireUser() {
   const supabase = await createServerSupabaseClient();
@@ -17,11 +18,11 @@ export async function requireUser() {
   return user;
 }
 
-export async function requireUserOrRedirect() {
+export async function requireUserOrRedirect(next = "/welcome") {
   try {
     return await requireUser();
   } catch {
-    redirect("/auth/sign-in");
+    redirect(`/auth/sign-in?next=${encodeURIComponent(safeReturnPath(next))}`);
   }
 }
 

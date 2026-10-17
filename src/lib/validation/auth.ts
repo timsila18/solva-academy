@@ -9,6 +9,7 @@ export const signUpSchema = z
     country: z.string().min(2),
     preferredLanguage: z.string().min(2),
     ageBracket: z.string().min(1),
+    intent: z.enum(["learner", "instructor", "academy", "organization", "parent"]).default("learner"),
     termsAccepted: z.literal("on", {
       error: "You must accept the terms.",
     }),

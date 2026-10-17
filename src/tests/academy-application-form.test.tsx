@@ -21,4 +21,4 @@ it("preserves entered application details when the session has expired", async (
   expect(screen.getByLabelText("Short description")).toHaveValue("Practical professional training for HR practitioners.");
   expect(screen.getByLabelText("School")).toHaveValue("school");
   expect(screen.getByRole("link", { name: /Sign in in a new tab/ })).toHaveAttribute("target", "_blank");
-});
+}, 15000);

@@ -50,7 +50,7 @@ export default async function InstructorDashboardPage() {
 
   return (
     <DashboardShell>
-      <PageHeading title="Instructor dashboard" description="Operate assigned courses, learners, assessment review, analytics, earnings, payouts, profile success, and notifications from real platform records." />
+      <PageHeading title="Teaching" description="Your courses, learners, and earnings." />
       <QuickLinks links={[
         ["Courses", "/instructor/courses"],
         ["Learners", "/instructor/learners"],

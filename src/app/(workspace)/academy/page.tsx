@@ -25,7 +25,7 @@ export default async function AcademyDashboardPage() {
 
   return (
     <DashboardShell>
-      <PageHeading title="Academy dashboard" description="Operate academy courses, tutors, learners, analytics, revenue, payout requests, quality, policies, branding, and storefronts using tenant-scoped data." />
+      <PageHeading title="My academy" description="Manage your courses, team, and learners." />
       <QuickLinks links={[
         ["Courses", "/academy/courses"],
         ["Learners", "/academy/learners"],

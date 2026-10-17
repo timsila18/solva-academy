@@ -13,10 +13,10 @@ export function MetricCard({
   className?: string;
 }) {
   return (
-    <Card className={cn("min-h-32", className)}>
-      <p className="text-sm font-medium text-muted-foreground">{label}</p>
-      <p className="mt-3 text-3xl font-semibold">{value}</p>
-      <p className="mt-3 text-xs leading-5 text-muted-foreground">{definition}</p>
+    <Card className={cn("min-h-28", className)}>
+      <p className="text-sm font-medium text-muted-foreground" title={definition}>{label}</p>
+      <p className="mt-3 break-words text-2xl font-semibold" aria-label={`${label}: ${value}`}>{value}</p>
+      <span className="sr-only">{definition}</span>
     </Card>
   );
 }

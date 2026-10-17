@@ -1,63 +1,7 @@
-"use client";
+import { selectWorkspaceAction } from "@/features/auth/workspace-actions";
+import { ArrowRight } from "lucide-react";
 
-import { useState } from "react";
-import { Badge } from "@/components/ui/badge";
-
-const fallbackRoles = [
-  "Learner",
-  "Instructor",
-  "Academy Owner",
-  "Academy Admin",
-  "Organization Administrator",
-  "HR Manager",
-  "Founding Super Admin",
-];
-const fallbackWorkspaces = [
-  "Personal Learning",
-  "Tutor Workspace",
-  "Academy Workspace",
-  "Organization Workspace",
-  "Platform Administration",
-];
-
-export function WorkspaceSwitcher() {
-  const [role, setRole] = useState(fallbackRoles[0]);
-  const [workspace, setWorkspace] = useState(fallbackWorkspaces[0]);
-  const adminMode = role.includes("Admin") || role.includes("Administrator");
-
-  return (
-    <div className="rounded-md border border-border bg-card p-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <Badge className={adminMode ? "border-primary bg-[#061a3d] text-white" : ""}>{role}</Badge>
-        <Badge>{workspace}</Badge>
-      </div>
-      <div className="mt-3 grid gap-2 sm:grid-cols-2">
-        <label className="text-xs font-medium text-muted-foreground">
-          Active role
-          <select
-            className="mt-1 min-h-10 w-full rounded-md border border-border bg-[#05070a] px-2 text-sm text-foreground"
-            value={role}
-            onChange={(event) => setRole(event.target.value)}
-          >
-            {fallbackRoles.map((item) => (
-              <option key={item}>{item}</option>
-            ))}
-          </select>
-        </label>
-        <label className="text-xs font-medium text-muted-foreground">
-          Active workspace
-          <select
-            className="mt-1 min-h-10 w-full rounded-md border border-border bg-[#05070a] px-2 text-sm text-foreground"
-            value={workspace}
-            onChange={(event) => setWorkspace(event.target.value)}
-          >
-            {fallbackWorkspaces.map((item) => (
-              <option key={item}>{item}</option>
-            ))}
-          </select>
-        </label>
-      </div>
-      <p className="mt-3 text-xs text-muted-foreground">Preview the workspace view from the menu below.</p>
-    </div>
-  );
+export function WorkspaceSwitcher({ workspaces, activeId }: { workspaces: { id: string; name: string; type: string }[]; activeId: string }) {
+  if (workspaces.length <= 1) return <p className="px-3 text-sm font-medium">{workspaces[0]?.name ?? "My account"}</p>;
+  return <form action={selectWorkspaceAction} className="flex items-end gap-2"><label className="grid min-w-0 flex-1 gap-2 text-xs text-muted-foreground">Workspace<select name="workspaceId" defaultValue={activeId} className="min-h-10 w-full rounded-md border border-border bg-background px-2 text-sm text-foreground">{workspaces.map((workspace) => <option key={workspace.id} value={workspace.id}>{workspace.name}</option>)}</select></label><button type="submit" aria-label="Open workspace" title="Open workspace" className="grid size-10 shrink-0 place-items-center rounded-md border border-border hover:bg-muted"><ArrowRight size={17} /></button></form>;
 }
