@@ -16,7 +16,7 @@ export default async function CoursePlayerPage({ params, searchParams }: { param
   const db = createServiceSupabaseClient();
   const { data: course } = await db.from("courses").select("title").eq("id", courseId).single();
   const { data: modules } = await db.from("course_modules").select("id,title,display_order").eq("course_id", courseId).order("display_order");
-  let lessonQuery = db.from("course_lessons").select("id,title,module_id,transcript,version_id").eq("course_id", courseId).neq("status", "archived").order("display_order");
+  let lessonQuery = db.from("course_lessons").select("id,title,module_id,transcript,version_id,learning_objective,learner_instructions").eq("course_id", courseId).neq("status", "archived").order("display_order");
   if (enrollment.course_version_id) lessonQuery = lessonQuery.eq("version_id", enrollment.course_version_id);
   if (enrollment.allowedLessonIds) lessonQuery = lessonQuery.in("id", enrollment.allowedLessonIds);
   const { data: lessons } = await lessonQuery;
@@ -36,6 +36,8 @@ export default async function CoursePlayerPage({ params, searchParams }: { param
       <section className="min-w-0">
         {selected && media ? <LessonVideo key={selected.id} src={media.signedUrl} courseId={courseId} lessonId={selected.id} initialPosition={episodePosition?.last_position_seconds ?? progress?.find((item) => item.lesson_id === selected.id)?.last_position_seconds ?? 0} /> : <p className="border border-border p-6 text-muted-foreground">No video is available for this lesson yet.</p>}
         {selected?.transcript && <section className="mt-6"><h2 className="font-semibold">Transcript</h2><p className="mt-3 whitespace-pre-wrap">{selected.transcript}</p></section>}
+        {selected?.learning_objective && <section className="mt-6"><h2 className="font-semibold">Learning outcomes</h2><p className="mt-3 text-sm">{selected.learning_objective}</p></section>}
+        {selected?.learner_instructions && <section className="mt-6"><h2 className="font-semibold">Practical exercise</h2><p className="mt-3 whitespace-pre-wrap text-sm">{selected.learner_instructions}</p></section>}
       </section>
     </div>
   </DashboardShell>;
