@@ -1,6 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Solva Academy">
-  <rect width="512" height="512" rx="96" fill="#05070a"/>
-  <path d="M96 178 256 96l160 82-160 82-160-82Z" fill="#ffffff"/>
-  <path d="M146 240v82c0 45 49 82 110 82s110-37 110-82v-82l-110 56-110-56Z" fill="#006BFF"/>
-  <path d="M412 190v122" stroke="#ffffff" stroke-width="24" stroke-linecap="round"/>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Solva Academy"><rect width="512" height="512" rx="80" fill="#05070a"></rect><svg xmlns="http://www.w3.org/2000/svg" width="368" height="368" viewBox="0 0 24 24" fill="none" stroke="#006bff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-graduation-cap" aria-hidden="true" x="72" y="72"><path d="M21.42 10.922a1 1 0 0 0-.019-1.838L12.83 5.18a2 2 0 0 0-1.66 0L2.6 9.08a1 1 0 0 0 0 1.832l8.57 3.908a2 2 0 0 0 1.66 0z"></path><path d="M22 10v6"></path><path d="M6 12.5V16a6 3 0 0 0 12 0v-3.5"></path></svg></svg>

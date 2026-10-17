@@ -19,6 +19,10 @@ export const metadata: Metadata = {
   description:
     "A Kenyan-first and Africa-ready learning ecosystem for learners, tutors, academies, and organizations.",
   manifest: "/manifest.webmanifest",
+  icons: {
+    icon: [{ url: "/icon.svg?v=2", type: "image/svg+xml" }],
+    apple: [{ url: "/apple-touch-icon.png?v=2", sizes: "180x180", type: "image/png" }],
+  },
   applicationName: "Solva Academy",
   appleWebApp: {
     capable: true,
