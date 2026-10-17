@@ -2,7 +2,8 @@
 
 import { redirect } from "next/navigation";
 import { writeAuditEvent } from "@/lib/audit/audit";
-import { requireUser } from "@/lib/authorization/server";
+import { requirePlatformAdmin, requireUser } from "@/lib/authorization/server";
+import { revalidatePath } from "next/cache";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { slugify } from "@/lib/utils";
 import type { AcademyApplicationState } from "./application-state";
@@ -204,35 +205,26 @@ export async function inviteWorkspaceMemberAction(formData: FormData) {
 }
 
 export async function reviewQueueAction(formData: FormData) {
-  const user = await requireUser();
-  const parsed = reviewActionSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) redirect("/admin/review-queues?error=validation");
+  await requirePlatformAdmin();
+  if (formData.get("resourceType") === "academy_application") return reviewAcademyApplicationAction(formData);
+  redirect("/admin/review-queues?error=unsupported");
+}
 
+export async function reviewAcademyApplicationAction(formData: FormData) {
+  await requirePlatformAdmin();
+  const parsed = reviewActionSchema.safeParse({ ...Object.fromEntries(formData), resourceType: "academy_application" });
+  if (!parsed.success || !["approve", "reject", "request_changes"].includes(parsed.data.decision)
+    || (parsed.data.decision !== "approve" && !parsed.data.notes?.trim())
+    || (parsed.data.notes?.length ?? 0) > 5000) redirect("/admin/review-queues?error=validation");
   const supabase = await createServerSupabaseClient();
-  if (parsed.data.resourceType === "academy_application" && parsed.data.decision === "approve") {
-    await supabase.rpc("approve_academy_application", {
-      application_id: parsed.data.resourceId,
-      reviewer: user.id,
-      review_note: parsed.data.notes || null,
-    });
-  } else {
-    await supabase.from("review_queue").upsert({
-      resource_type: parsed.data.resourceType,
-      resource_id: parsed.data.resourceId,
-      status: parsed.data.decision === "request_changes" ? "changes_requested" : `${parsed.data.decision}d`,
-      assigned_to: user.id,
-      notes: parsed.data.notes || null,
-    });
-  }
-
-  await writeAuditEvent({
-    actorId: user.id,
-    action: `review_${parsed.data.decision}`,
-    resourceType: parsed.data.resourceType,
-    resourceId: parsed.data.resourceId,
-    reason: parsed.data.notes,
-    success: true,
+  const { error } = await supabase.rpc("review_academy_application", {
+    application_id: parsed.data.resourceId,
+    decision: parsed.data.decision,
+    review_note: parsed.data.notes?.trim() || null,
   });
-
+  if (error) redirect("/admin/review-queues?error=review");
+  revalidatePath("/admin/review-queues");
+  revalidatePath("/welcome");
+  revalidatePath("/academy");
   redirect("/admin/review-queues?reviewed=true");
 }
