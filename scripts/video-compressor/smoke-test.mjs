@@ -29,6 +29,9 @@ try{
   assert.equal((await fetch(base+"/api/jobs")).status,403);
   assert.equal((await fetch(base+"/api/jobs?profile=balanced",{method:"POST",headers:{...headers,origin:"https://attacker.example"},body:"x"})).status,403);
   const picked=await(await fetch(base+"/api/sources",{method:"POST",headers})).json();assert.ok(picked.id);assert.equal(picked.bytes,bytes.length);assert.equal(picked.path,undefined);
+  assert.equal(picked.width,1280);assert.ok(Math.abs(picked.duration-6)<.3);
+  const sourcePreview=await fetch(base+`/api/sources/${picked.id}/file?key=${key}`,{headers:{Range:"bytes=0-99"}});
+  assert.equal(sourcePreview.status,206);assert.equal((await sourcePreview.arrayBuffer()).byteLength,100);
   assert.equal((await fetch(base+"/api/jobs",{method:"POST",headers,body:JSON.stringify({sourceId:picked.id,profile:"unknown"})})).status,400);
   assert.equal((await fetch(base+"/api/jobs",{method:"POST",headers,body:JSON.stringify({sourceId:"C:/Windows/win.ini",profile:"balanced"})})).status,400);
   assert.equal((await fetch(base+"/api/jobs",{method:"POST",headers,body:bytes})).status,413);

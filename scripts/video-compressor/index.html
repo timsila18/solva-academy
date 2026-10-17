@@ -2,12 +2,19 @@
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Solva Video Compressor</title><link rel="icon" href="/icon.png">
 <style nonce="__NONCE__">
 :root{color-scheme:light;font-family:Arial,sans-serif;color:#111;background:#fff}*{box-sizing:border-box}body{margin:0}header{height:68px;border-bottom:1px solid #ddd;display:flex;align-items:center;justify-content:space-between;padding:0 24px}header a{display:flex;align-items:center;gap:10px;color:#111;text-decoration:none;font-weight:700}header img{height:32px;width:32px}header span{font-size:12px;color:#555}main{max-width:860px;margin:36px auto;padding:0 24px}h1{font-size:26px;margin:0 0 12px}h2{font-size:17px}p{font-size:14px;line-height:1.6;color:#555}form{margin-top:28px;border-top:1px solid #ddd;border-bottom:1px solid #ddd;padding:24px 0;display:grid;gap:22px}label{font-size:14px;font-weight:600;display:grid;gap:10px}input[type=file],select{max-width:100%;min-width:0;padding:12px;border:1px solid #bbb;border-radius:4px;background:#fff;color:#111;font-size:14px}input[type=file]{width:100%}.check{display:flex;align-items:center;gap:9px;font-weight:400}.row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}button,.download{border:1px solid #bbb;border-radius:4px;background:white;color:#111;min-height:42px;padding:10px 18px;font-size:14px;font-weight:600;cursor:pointer;text-decoration:none}button[type=submit]{background:#0066ff;border-color:#0066ff;color:white}button:disabled{opacity:.5;cursor:default}button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid #0066ff;outline-offset:3px}progress{width:100%;height:12px;accent-color:#0066ff}#result{margin-top:28px;border-top:1px solid #ddd;padding:18px 0}#result video{width:100%;max-height:440px;background:#111;margin:12px 0}dl{display:grid;grid-template-columns:120px minmax(0,1fr);gap:12px;font-size:14px}dt{color:#555}dd{margin:0;overflow-wrap:anywhere}#error{color:#a11919}#status{min-height:24px;margin:0}#limit{border-left:3px solid #0066ff;padding-left:12px}footer{margin:32px 0;font-size:12px;color:#666;overflow-wrap:anywhere}[hidden]{display:none!important}@media(max-width:520px){header{padding:0 16px}header span{max-width:100px}main{margin-top:24px;padding:0 16px}h1{font-size:23px}dl{grid-template-columns:95px minmax(0,1fr)}}
+.source-picker{border:1px dashed #aeb9ca;border-radius:6px;padding:24px;text-align:center;background:#fafbfc}.source-icon{display:inline-flex;color:#0066ff;margin-bottom:8px}.source-picker h2{margin:4px 0 8px;font-size:17px}.source-picker p{margin:6px 0 18px}.source-picker .row{justify-content:center}.source-picker button{display:inline-flex;align-items:center;justify-content:center;gap:8px}.source-picker[data-selected=true]{border:1px solid #bac9e0;text-align:left}.source-picker[data-selected=true] .row{justify-content:flex-start}.source-selected{display:flex;align-items:center;gap:14px;margin-bottom:18px}.source-selected>div{min-width:0;flex:1}.source-selected #source-info{font-weight:600;color:#111;overflow-wrap:anywhere;margin:0 0 5px}.source-selected #source-meta{font-size:13px;margin:0;color:#555}.source-selected .source-icon{margin:0;flex-shrink:0}.source-picker #source-help{font-size:12px;color:#666;margin:14px 0 0}#source-preview-group{margin:0}#source-preview-group summary{font-size:13px;cursor:pointer;color:#0066ff}#source-preview{width:100%;max-height:320px;background:#111;margin-top:12px}#estimate{font-size:13px;color:#555;margin:0}#cancel-selection{border:none;color:#555;background:transparent;padding:8px}#clear{border:none;background:transparent;font-size:13px;color:#555;padding:8px}@media(max-width:520px){.source-picker{padding:20px 14px}.source-selected{align-items:flex-start}.source-picker .row button{flex:1}.source-picker #cancel-selection{flex:none}}
 </style></head><body><header><a href="/"><img src="/icon.png" alt="">Solva Academy</a><span>On this computer</span></header>
 <main><h1>Video compressor</h1><p>No original-file copy or upload. Only the compressed output is saved; the selected source stays unchanged.</p>
-<form id="form"><div><button id="choose" type="button" aria-describedby="source-info">Choose video</button><p id="source-info">No video selected</p></div>
+<form id="form"><section id="source-panel" class="source-picker" data-selected="false" aria-label="Selected video">
+<div id="source-empty"><span class="source-icon">__VIDEO_ICON__</span><h2>Choose a class video</h2></div>
+<div id="selected-meta" class="source-selected" hidden><span class="source-icon">__VIDEO_ICON__</span><div><p id="source-info">No video selected</p><p id="source-meta"></p></div><button id="clear" type="button">Clear</button></div>
+<div class="row"><button id="choose" type="button" aria-describedby="source-help">__FOLDER_ICON__<span id="choose-label">Choose video</span></button><button id="cancel-selection" type="button" hidden>Cancel selection</button></div><p id="source-help">MP4, MOV, MKV, WEBM or AVI · Up to 8 GB</p>
+</section>
+<details id="source-preview-group" hidden><summary>Preview selected video</summary><video id="source-preview" controls preload="none" aria-label="Original video preview"></video><p id="source-preview-error" hidden>This source format cannot be previewed in this browser. The compressed MP4 can be previewed after encoding.</p></details>
 <label>Compression preset<select id="profile"><option value="balanced">Balanced · Up to 1080p · 2 Mbps</option><option value="quality">Higher quality · Up to 1080p · Variable size</option><option value="compact">Smaller file · Up to 720p · 1 Mbps</option></select></label>
 <label class="check"><input type="checkbox" id="sample" checked>60-second sample only</label>
-<div class="row"><button id="start" type="submit">Compress video</button><button id="cancel" type="button" disabled>Cancel</button></div>
+<p id="estimate" hidden></p>
+<div class="row"><button id="start" type="submit" disabled>Compress video</button><button id="cancel" type="button" disabled>Cancel</button></div>
 <progress id="progress" max="100" value="0" aria-label="Compression progress" hidden></progress><p id="status" role="status" aria-live="polite">Ready</p><p id="error" role="alert" hidden></p></form>
 <section id="result" hidden><h2>Compressed copy</h2><dl><dt>Original size</dt><dd id="original-size"></dd><dt>Output size</dt><dd id="output-size"></dd><dt>Saved to</dt><dd id="output-path"></dd></dl><video id="preview" controls preload="metadata" aria-label="Compressed video preview"></video><div class="row"><a id="download" class="download">Save a copy</a><a class="download" href="https://academy.solvaone.co.ke/academy/courses" target="_blank" rel="noopener noreferrer">Open Academy courses</a></div><p id="limit"></p></section>
 <footer>MP4 / H.264 / AAC · Source limit: 8 GB · Academy upload limit: 100 MB</footer></main>
@@ -15,14 +22,26 @@
 const key="__TOKEN__";
 const el=id=>document.getElementById(id);
 const size=bytes=>bytes>=1024**3?(bytes/1024**3).toFixed(2)+" GB":(bytes/1024**2).toFixed(1)+" MB";
-let source=null,activeJob=null,poller=null;
+let source=null,activeJob=null,poller=null,selectionAbort=null;
 function status(message){el("status").textContent=message;}
 function fail(message){el("error").textContent=message;el("error").hidden=false;}
-function busy(value){for(const id of ["choose","profile","sample","start"])el(id).disabled=value;el("cancel").disabled=!value||!activeJob;}
-el("choose").onclick=async()=>{busy(true);el("error").hidden=true;status("Choose a video in the Windows file selection window...");try{
- const r=await fetch("/api/sources",{method:"POST",headers:{"x-compressor-key":key}});const data=await r.json();if(!r.ok)throw new Error(data.error||"File selection failed.");
- if(!data.cancelled){source=data;el("source-info").textContent=data.name+" · "+size(data.bytes);}status(source?"Ready to compress":"No video selected");
-}catch(error){fail(error.message);}finally{busy(false);}};
+function busy(value){for(const id of ["choose","profile","sample","clear"])el(id).disabled=value;el("start").disabled=value||!source;el("cancel").disabled=!value||!activeJob;}
+function estimate(){el("estimate").hidden=!source;if(!source)return;const seconds=el("sample").checked?Math.min(source.duration,60):source.duration;const rate=el("profile").value==="balanced"?2128000:el("profile").value==="compact"?1128000:null;el("estimate").textContent=rate?"Estimated "+(el("sample").checked?"sample":"full video")+": about "+size(seconds*rate/8)+" · Actual size varies":"Output size varies with the recording's visual detail.";}
+function showSource(){
+ el("source-panel").dataset.selected=String(Boolean(source));el("source-empty").hidden=Boolean(source);el("selected-meta").hidden=!source;el("source-preview-group").hidden=!source;el("choose-label").textContent=source?"Change video":"Choose video";
+ el("source-preview-error").hidden=true;
+ if(source){el("source-info").textContent=source.name;el("source-meta").textContent=size(source.bytes)+" · "+Math.floor(source.duration/60)+":"+String(Math.floor(source.duration%60)).padStart(2,"0")+" · "+source.width+" × "+source.height;el("source-preview").src="/api/sources/"+source.id+"/file?key="+key;}
+ else{el("source-preview").removeAttribute("src");el("source-preview").load();el("source-preview-group").open=false;}
+ estimate();busy(false);
+}
+el("source-preview").onerror=()=>{if(source)el("source-preview-error").hidden=false;};
+el("profile").onchange=estimate;el("sample").onchange=estimate;
+el("clear").onclick=()=>{source=null;showSource();status("No video selected");};
+el("choose").onclick=async()=>{busy(true);el("error").hidden=true;el("cancel-selection").hidden=false;el("choose-label").textContent="Opening file picker...";selectionAbort=new AbortController();status("Waiting for file selection...");try{
+ const r=await fetch("/api/sources",{method:"POST",headers:{"x-compressor-key":key},signal:selectionAbort.signal});const data=await r.json();if(!r.ok)throw new Error(data.error||"File selection failed.");
+ if(!data.cancelled){source=data;el("result").hidden=true;showSource();}status(source?"Ready to compress":"No video selected");
+}catch(error){if(error.name==="AbortError")status("Selection cancelled");else{fail(error.message);status("File selection failed");}}finally{selectionAbort=null;el("cancel-selection").hidden=true;el("choose-label").textContent=source?"Change video":"Choose video";busy(false);}};
+el("cancel-selection").onclick=()=>selectionAbort?.abort();
 async function refresh(){
  if(!activeJob)return;
  try{const response=await fetch("/api/jobs/"+activeJob,{headers:{"x-compressor-key":key}});const job=await response.json();if(!response.ok)throw new Error(job.error);

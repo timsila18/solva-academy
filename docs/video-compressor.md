@@ -7,6 +7,10 @@ browser-WASM compressor. It does not upload originals or results to any cloud.
 ## Workflow
 
 1. Click Choose video and select a source up to 8 GB in the Windows file picker.
+   The owner window is explicitly shown and activated so the picker can appear
+   above the browser. Cancel selection aborts the native picker request. The
+   selected-file panel shows name, size, duration and resolution, with optional
+   range-streamed source preview and approximate preset-based output estimates.
 2. Choose Balanced (up to 1080p, 2 Mbps), Higher quality (1080p CRF 21, variable
    size), or Smaller file (up to 720p, 1 Mbps).
 3. Leave the 60-second sample checkbox selected for the first quality check.

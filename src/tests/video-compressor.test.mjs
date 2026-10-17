@@ -1,6 +1,7 @@
-import { expect, it } from "vitest";
+import { expect, it, vi, afterEach } from "vitest";
 import { readFile } from "node:fs/promises";
 import { encodingArguments } from "../../scripts/video-compressor/engine.mjs";
+afterEach(()=>vi.restoreAllMocks());
 it("uses bounded 1080p H264 encoding without upscaling or forcing a new frame rate",()=>{
   const args=encodingArguments("source.mov","output.mp4","balanced",false);
   expect(args).toContain("libx264");expect(args).toContain("2000k");expect(args).toContain("128k");
@@ -26,6 +27,28 @@ it("has labelled controls, accessible progress and no third-party scripts",async
   expect(html).toContain("100 MB upload limit");
   expect(html).toContain("No original-file copy or upload");
   expect(html).not.toContain("xhr.send(file)");
+  expect(document.querySelector("#start").disabled).toBe(true);
+  expect(document.querySelector("#cancel-selection")).not.toBeNull();
+  expect(document.querySelector("#source-preview").getAttribute("preload")).toBe("none");
   const script=/<script nonce="__NONCE__">([\s\S]+)<\/script>/.exec(html)?.[1];
   expect(()=>new Function(script)).not.toThrow();
+});
+it("shows the selected recording, enables compression and updates the size estimate",async()=>{
+  const html=await readFile("scripts/video-compressor/index.html","utf8");document.body.innerHTML=html;
+  vi.spyOn(HTMLMediaElement.prototype,"load").mockImplementation(()=>{});
+  const fetchMock=vi.spyOn(globalThis,"fetch").mockImplementation(async(url)=>({ok:true,json:async()=>url==="/api/jobs"?[]:{id:"source-id",name:"HR Class 01.mp4",bytes:4*1024**3,duration:900,width:1920,height:1080}}));
+  const script=/<script nonce="__NONCE__">([\s\S]+)<\/script>/.exec(html)[1];new Function(script)();
+  await document.querySelector("#choose").onclick();
+  expect(document.querySelector("#source-info").textContent).toBe("HR Class 01.mp4");
+  expect(document.querySelector("#source-meta").textContent).toContain("15:00");
+  expect(document.querySelector("#source-meta").textContent).toContain("1920 × 1080");
+  expect(document.querySelector("#start").disabled).toBe(false);
+  expect(document.querySelector("#source-empty").hidden).toBe(true);
+  expect(document.querySelector("#estimate").textContent).toContain("sample");
+  document.querySelector("#sample").checked=false;document.querySelector("#sample").onchange();
+  expect(document.querySelector("#estimate").textContent).toContain("full video");
+  document.querySelector("#clear").onclick();
+  expect(document.querySelector("#start").disabled).toBe(true);
+  expect(document.querySelector("#source-empty").hidden).toBe(false);
+  expect(fetchMock.mock.calls.some(([url])=>url==="/api/sources")).toBe(true);
 });

@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-export function pickSource() {
+export function pickSource(signal) {
   // Only the native smoke-test process opts into a fixture picker at startup.
   if (process.env.VIDEO_COMPRESSOR_TEST_MODE === "1" && process.env.VIDEO_COMPRESSOR_TEST_SOURCE) {
     return Promise.resolve({ path: process.env.VIDEO_COMPRESSOR_TEST_SOURCE });
@@ -9,7 +9,7 @@ export function pickSource() {
   if (process.platform !== "win32") throw new Error("The direct-file picker currently requires Windows.");
   return new Promise((resolve, reject) => {
     const child = spawn("powershell.exe", ["-NoProfile", "-STA", "-WindowStyle", "Hidden", "-File",
-      fileURLToPath(new URL("./pick-source.ps1", import.meta.url))], { windowsHide: true, timeout: 300000 });
+      fileURLToPath(new URL("./pick-source.ps1", import.meta.url))], { windowsHide: true, timeout: 300000, signal });
     let output = "";
     child.stdout.on("data", (chunk) => { output += chunk; if (output.length > 32768) child.kill(); });
     child.stderr.resume();

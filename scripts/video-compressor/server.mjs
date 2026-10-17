@@ -6,12 +6,17 @@ import { fileURLToPath } from "node:url";
 import { resolve, join, basename } from "node:path";
 import { probeVideo, encodeVideo, profiles } from "./engine.mjs";
 import { pickSource } from "./source-picker.mjs";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { Video, FolderOpen } from "lucide-react";
 
 const ROOT = fileURLToPath(new URL("../../", import.meta.url));
 const scratch = join(ROOT, ".local/video-compressor");
 const outputDir = resolve(ROOT, "../compressed-videos");
 const token = randomBytes(32).toString("hex");
 const nonce = randomBytes(18).toString("base64");
+const videoIcon = renderToStaticMarkup(createElement(Video, { size: 30, "aria-hidden": true }));
+const folderIcon = renderToStaticMarkup(createElement(FolderOpen, { size: 17, "aria-hidden": true }));
 const port = Number(process.env.VIDEO_COMPRESSOR_PORT ?? 4318);
 if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error("Invalid compressor port.");
 const origin = `http://127.0.0.1:${port}`;
@@ -31,6 +36,22 @@ function publicJob(job) {
     academyUploadLimitBytes: 100 * 1024 * 1024 };
 }
 function json(res, status, value) { res.writeHead(status, { "Content-Type": "application/json" }); res.end(JSON.stringify(value)); }
+async function streamFile(req, res, path, type, downloadName) {
+  const { size } = await stat(path);
+  const range = req.headers.range;
+  const parsed = range && /^bytes=(\d+)-(\d*)$/.exec(range);
+  if (range && !parsed) { res.writeHead(416, { "Content-Range": `bytes */${size}` }); return res.end(); }
+  const start = parsed ? Number(parsed[1]) : 0;
+  const end = parsed?.[2] ? Math.min(Number(parsed[2]), size - 1) : size - 1;
+  if (start > end || start >= size) { res.writeHead(416, { "Content-Range": `bytes */${size}` }); return res.end(); }
+  res.setHeader("Content-Type", type); res.setHeader("Accept-Ranges", "bytes");
+  if (downloadName) res.setHeader("Content-Disposition", `attachment; filename="${downloadName}"`);
+  if (parsed) res.setHeader("Content-Range", `bytes ${start}-${end}/${size}`);
+  res.writeHead(parsed ? 206 : 200, { "Content-Length": end - start + 1 });
+  const stream = createReadStream(path, { start, end });
+  stream.on("error", () => res.destroy()); res.on("close", () => stream.destroy());
+  return stream.pipe(res);
+}
 async function readJson(req) {
   let body = "";
   for await (const chunk of req) {
@@ -71,7 +92,7 @@ const server = createServer(async (req, res) => {
   const url = new URL(req.url, origin);
   try {
     if (req.method === "GET" && url.pathname === "/") {
-      const page = (await readFile(new URL("./index.html", import.meta.url), "utf8")).replaceAll("__TOKEN__", token).replaceAll("__NONCE__", nonce);
+      const page = (await readFile(new URL("./index.html", import.meta.url), "utf8")).replaceAll("__TOKEN__", token).replaceAll("__NONCE__", nonce).replaceAll("__VIDEO_ICON__", videoIcon).replaceAll("__FOLDER_ICON__", folderIcon);
       res.setHeader("Content-Security-Policy", `default-src 'self'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'; img-src 'self'; media-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'`);
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }); return res.end(page);
     }
@@ -85,16 +106,27 @@ const server = createServer(async (req, res) => {
       if (selecting) return json(res, 409, { error: "A file selection window is already open." });
       if (sources.size >= 20) return json(res, 409, { error: "Restart the compressor to clear selected-file references." });
       selecting = true;
+      const selectionController = new AbortController();
+      const cancelSelection = () => { if (!res.writableEnded) selectionController.abort(); };
+      res.on("close", cancelSelection);
       try {
-        const selected = await pickSource();
+        const selected = await pickSource(selectionController.signal);
         if (selected.cancelled) return json(res, 200, { cancelled: true });
         const path = await realpath(selected.path);
         const info = await stat(path);
         if (!info.isFile() || info.size <= 0 || info.size > MAX_SOURCE) return json(res, 413, { error: "Choose a video up to 8 GB." });
+        const metadata = await probeVideo(path, selectionController.signal);
         const source = { id: randomUUID(), path, name: basename(path), bytes: info.size, mtime: info.mtimeMs };
         sources.set(source.id, source);
-        return json(res, 200, { id: source.id, name: source.name, bytes: source.bytes });
-      } finally { selecting = false; }
+        return json(res, 200, { id: source.id, name: source.name, bytes: source.bytes, duration: metadata.duration, width: metadata.width, height: metadata.height });
+      } finally { selecting = false; res.off("close", cancelSelection); }
+    }
+    const sourceMatch = /^\/api\/sources\/([a-f0-9-]{36})\/file$/.exec(url.pathname);
+    if (req.method === "GET" && sourceMatch) {
+      const source = sources.get(sourceMatch[1]);
+      if (!source) return json(res, 404, { error: "Selected source not found." });
+      const mime = /\.webm$/i.test(source.name) ? "video/webm" : /\.mov$/i.test(source.name) ? "video/quicktime" : /\.avi$/i.test(source.name) ? "video/x-msvideo" : /\.mkv$/i.test(source.name) ? "video/x-matroska" : "video/mp4";
+      return await streamFile(req, res, source.path, mime);
     }
     if (req.method === "POST" && url.pathname === "/api/jobs") {
       if ([...jobs.values()].some((job) => ["inspecting", "compressing"].includes(job.state))) return json(res, 409, { error: "Finish or cancel the current video first." });
@@ -125,21 +157,7 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === "GET" && !match[2]) return json(res, 200, publicJob(job));
     if (req.method === "GET" && match[2] && job.state === "done") {
-      const { size } = await stat(job.output);
-      const range = req.headers.range;
-      const parsed = range && /^bytes=(\d+)-(\d*)$/.exec(range);
-      if (range && !parsed) { res.writeHead(416, { "Content-Range": `bytes */${size}` }); return res.end(); }
-      const start = parsed ? Number(parsed[1]) : 0;
-      const end = parsed?.[2] ? Math.min(Number(parsed[2]), size - 1) : size - 1;
-      if (start > end || start >= size) { res.writeHead(416, { "Content-Range": `bytes */${size}` }); return res.end(); }
-      res.setHeader("Content-Type", "video/mp4"); res.setHeader("Accept-Ranges", "bytes");
-      if (url.searchParams.get("download") === "1") res.setHeader("Content-Disposition", `attachment; filename="${basename(job.output)}"`);
-      if (parsed) res.setHeader("Content-Range", `bytes ${start}-${end}/${size}`);
-      res.writeHead(parsed ? 206 : 200, { "Content-Length": end - start + 1 });
-      const stream = createReadStream(job.output, { start, end });
-      stream.on("error", () => res.destroy());
-      res.on("close", () => stream.destroy());
-      return stream.pipe(res);
+      return await streamFile(req, res, job.output, "video/mp4", url.searchParams.get("download") === "1" ? basename(job.output) : undefined);
     }
     json(res, 405, { error: "Method not allowed." });
   } catch (error) { if (!res.headersSent && !res.destroyed) json(res, 500, { error: "The local operation failed. Check free disk space and retry." }); console.error(error.message); }
