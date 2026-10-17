@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Solva Video Compressor</title><link rel="icon" href="/icon.png">
+<style nonce="__NONCE__">
+:root{color-scheme:light;font-family:Arial,sans-serif;color:#111;background:#fff}*{box-sizing:border-box}body{margin:0}header{height:68px;border-bottom:1px solid #ddd;display:flex;align-items:center;justify-content:space-between;padding:0 24px}header a{display:flex;align-items:center;gap:10px;color:#111;text-decoration:none;font-weight:700}header img{height:32px;width:32px}header span{font-size:12px;color:#555}main{max-width:860px;margin:36px auto;padding:0 24px}h1{font-size:26px;margin:0 0 12px}h2{font-size:17px}p{font-size:14px;line-height:1.6;color:#555}form{margin-top:28px;border-top:1px solid #ddd;border-bottom:1px solid #ddd;padding:24px 0;display:grid;gap:22px}label{font-size:14px;font-weight:600;display:grid;gap:10px}input[type=file],select{max-width:100%;min-width:0;padding:12px;border:1px solid #bbb;border-radius:4px;background:#fff;color:#111;font-size:14px}input[type=file]{width:100%}.check{display:flex;align-items:center;gap:9px;font-weight:400}.row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}button,.download{border:1px solid #bbb;border-radius:4px;background:white;color:#111;min-height:42px;padding:10px 18px;font-size:14px;font-weight:600;cursor:pointer;text-decoration:none}button[type=submit]{background:#0066ff;border-color:#0066ff;color:white}button:disabled{opacity:.5;cursor:default}button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid #0066ff;outline-offset:3px}progress{width:100%;height:12px;accent-color:#0066ff}#result{margin-top:28px;border-top:1px solid #ddd;padding:18px 0}#result video{width:100%;max-height:440px;background:#111;margin:12px 0}dl{display:grid;grid-template-columns:120px minmax(0,1fr);gap:12px;font-size:14px}dt{color:#555}dd{margin:0;overflow-wrap:anywhere}#error{color:#a11919}#status{min-height:24px;margin:0}#limit{border-left:3px solid #0066ff;padding-left:12px}footer{margin:32px 0;font-size:12px;color:#666;overflow-wrap:anywhere}[hidden]{display:none!important}@media(max-width:520px){header{padding:0 16px}header span{max-width:100px}main{margin-top:24px;padding:0 16px}h1{font-size:23px}dl{grid-template-columns:95px minmax(0,1fr)}}
+</style></head><body><header><a href="/"><img src="/icon.png" alt="">Solva Academy</a><span>On this computer</span></header>
+<main><h1>Video compressor</h1><p>Originals stay unchanged. A temporary local copy and the compressed output need free disk space.</p>
+<form id="form"><label>Source video <input id="source" type="file" accept="video/mp4,video/quicktime,video/webm,video/x-matroska,video/x-msvideo,.mov,.mkv,.mp4,.webm,.avi" required></label><p id="source-info" hidden></p>
+<label>Compression preset<select id="profile"><option value="balanced">Balanced · Up to 1080p · 2 Mbps</option><option value="quality">Higher quality · Up to 1080p · Variable size</option><option value="compact">Smaller file · Up to 720p · 1 Mbps</option></select></label>
+<label class="check"><input type="checkbox" id="sample" checked>60-second sample only</label>
+<div class="row"><button id="start" type="submit">Compress video</button><button id="cancel" type="button" disabled>Cancel</button></div>
+<progress id="progress" max="100" value="0" aria-label="Compression progress" hidden></progress><p id="status" role="status" aria-live="polite">Ready</p><p id="error" role="alert" hidden></p></form>
+<section id="result" hidden><h2>Compressed copy</h2><dl><dt>Original size</dt><dd id="original-size"></dd><dt>Output size</dt><dd id="output-size"></dd><dt>Saved to</dt><dd id="output-path"></dd></dl><video id="preview" controls preload="metadata" aria-label="Compressed video preview"></video><div class="row"><a id="download" class="download">Save a copy</a><a class="download" href="https://academy.solvaone.co.ke/academy/courses" target="_blank" rel="noopener noreferrer">Open Academy courses</a></div><p id="limit"></p></section>
+<footer>MP4 / H.264 / AAC · Source limit: 8 GB · Academy upload limit: 100 MB</footer></main>
+<script nonce="__NONCE__">
+const key="__TOKEN__";
+const el=id=>document.getElementById(id);
+const size=bytes=>bytes>=1024**3?(bytes/1024**3).toFixed(2)+" GB":(bytes/1024**2).toFixed(1)+" MB";
+let xhr=null,activeJob=null,poller=null;
+function status(message){el("status").textContent=message;}
+function fail(message){el("error").textContent=message;el("error").hidden=false;}
+function busy(value){for(const id of ["source","profile","sample","start"])el(id).disabled=value;el("cancel").disabled=!value;}
+el("source").onchange=()=>{const file=el("source").files[0];el("source-info").hidden=!file;if(file)el("source-info").textContent=file.name+" · "+size(file.size);};
+async function refresh(){
+ if(!activeJob)return;
+ try{const response=await fetch("/api/jobs/"+activeJob,{headers:{"x-compressor-key":key}});const job=await response.json();if(!response.ok)throw new Error(job.error);
+ el("progress").value=job.progress;
+ if(job.state==="compressing")status("Compressing · "+job.progress+"%");else if(job.state==="inspecting")status("Checking the video...");
+ if(job.state==="done"){
+  clearInterval(poller);busy(false);status(job.sample?"Sample ready. Check the text and sound before compressing the full class.":"Compressed copy saved.");
+  const url="/api/jobs/"+job.id+"/file?key="+key;el("preview").src=url;el("download").href=url+"&download=1";el("download").setAttribute("download","");
+  el("original-size").textContent=size(job.sourceBytes);el("output-size").textContent=size(job.outputBytes)+(job.sample?" (60-second sample)":"");el("output-path").textContent=job.outputPath;
+  el("limit").textContent=job.outputBytes>job.academyUploadLimitBytes?"This copy is larger than the Academy's current 100 MB upload limit. Save it; the Academy uploader needs an upgrade before it can accept this file.":job.sample?"This is a sample, not the complete class. Check the full export's size before uploading.":"This copy is within the Academy's current 100 MB upload limit. Review it before uploading.";
+  el("result").hidden=false;activeJob=null;
+ }else if(["failed","cancelled"].includes(job.state)){clearInterval(poller);busy(false);status(job.state==="cancelled"?"Cancelled":"Failed");fail(job.error||"Compression failed.");activeJob=null;}
+ }catch(error){clearInterval(poller);busy(false);fail(error.message+" The local job may still be running; refresh this page to reconnect.");}
+}
+el("form").onsubmit=event=>{
+ event.preventDefault();const file=el("source").files[0];if(!file)return;
+ el("error").hidden=true;
+ if(file.size>8*1024**3){fail("Select a video up to 8 GB.");return;}
+ el("preview").removeAttribute("src");el("preview").load();el("result").hidden=true;busy(true);el("progress").hidden=false;el("progress").value=0;status("Reading the file on this computer...");
+ const params=new URLSearchParams({name:file.name,profile:el("profile").value,sample:String(el("sample").checked)});
+ xhr=new XMLHttpRequest();xhr.open("POST","/api/jobs?"+params);xhr.setRequestHeader("x-compressor-key",key);xhr.setRequestHeader("Content-Type","application/octet-stream");
+ xhr.upload.onprogress=event=>{if(event.lengthComputable){el("progress").value=Math.floor(event.loaded/event.total*100);status("Reading local file · "+Math.floor(event.loaded/event.total*100)+"%");}};
+ xhr.onload=()=>{try{const data=JSON.parse(xhr.responseText);if(xhr.status!==202)throw new Error(data.error||"Could not start compression.");activeJob=data.id;el("progress").value=0;poller=setInterval(refresh,1000);void refresh();}catch(error){busy(false);fail(error.message);}};
+ xhr.onerror=()=>{busy(false);fail("The local connection was interrupted. Try again.");};
+ xhr.onabort=()=>{busy(false);status("Cancelled. Original file unchanged.");};xhr.send(file);
+};
+el("cancel").onclick=async()=>{if(!activeJob){xhr?.abort();return;}el("cancel").disabled=true;status("Cancelling...");try{const response=await fetch("/api/jobs/"+activeJob,{method:"DELETE",headers:{"x-compressor-key":key}});if(!response.ok)throw new Error("Cancellation failed.");}catch(error){fail(error.message);el("cancel").disabled=false;}};
+fetch("/api/jobs",{headers:{"x-compressor-key":key}}).then(r=>r.json()).then(jobs=>{const job=jobs.findLast(j=>["reading","inspecting","compressing","done"].includes(j.state));if(job){activeJob=job.id;busy(job.state!=="done");el("progress").hidden=false;poller=setInterval(refresh,1000);void refresh();}}).catch(()=>fail("The local compressor is unavailable."));
+</script></body></html>
