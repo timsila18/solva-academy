@@ -1,0 +1,47 @@
+do $test$
+declare result jsonb; course uuid; lesson uuid; second uuid; template uuid; school uuid; level uuid; question uuid; denied boolean;
+begin
+ begin
+  perform set_config('request.jwt.claim.sub','7161f4bc-8119-4f0f-9448-6dc4f8e5869b',true);
+  perform set_config('request.jwt.claim.role','authenticated',true);
+  if not public.studio_can_edit_course('37fc22f0-b065-4e13-bdd5-02852c3f950b') then raise exception 'Existing HR draft must remain editable'; end if;
+  select id into template from public.course_studio_templates where is_active limit 1;
+  select id into school from public.schools where status in ('active','published') limit 1;
+  select id into level from public.course_levels where status='active' limit 1;
+  result:=public.studio_command(null,'create',jsonb_build_object('workspaceId','c54f4797-690b-4b3f-b8ac-7256b111edfd','templateId',template,'schoolId',school,'levelId',level,'title','Studio rollback test','description','A temporary course for transaction-safe Studio testing.','titles',jsonb_build_array('First test class','Second test class'),'sellClasses',true,'coursePriceMinor',1600000,'classPriceMinor',100000));
+  course:=(result->>'courseId')::uuid;
+  select id into lesson from public.course_lessons where course_id=course order by display_order limit 1;
+  select id into second from public.course_lessons where course_id=course order by display_order desc limit 1;
+  perform public.studio_command(course,'edit',jsonb_build_object('lessonId',lesson,'title','Edited test class','summary','Notes','outcomes','An outcome','exercise','Try this','minutes',15,'priceMinor',100000));
+  perform public.studio_command(course,'move_down',jsonb_build_object('lessonId',lesson));
+  if (select display_order from public.course_lessons where id=lesson)<>(select display_order from public.course_modules where id=(select module_id from public.course_lessons where id=lesson)) then raise exception 'Player order was not synchronized'; end if;
+  perform public.studio_command(course,'duplicate',jsonb_build_object('lessonId',lesson));
+  if (select count(*) from public.course_lessons where course_id=course)<>3 then raise exception 'Duplicate failed'; end if;
+  perform public.studio_command(course,'remove',jsonb_build_object('lessonId',second));
+  if (select status from public.course_lessons where id=second)<>'archived' then raise exception 'Remove failed'; end if;
+  perform public.studio_command(course,'restore',jsonb_build_object('lessonId',second));
+  perform public.studio_command(course,'question_save',jsonb_build_object('lessonId',lesson,'prompt','Which answer is correct?','options',jsonb_build_array('One','Two','Three','Four'),'correct',1,'explanation','Two is correct.'));
+  select q.id into question from public.quiz_questions q join public.quizzes z on z.id=q.quiz_id join public.assessments a on a.id=z.assessment_id where a.course_id=course;
+  if (select count(*) from public.quiz_question_options where question_id=question and is_correct)<>1 then raise exception 'Answer key failed'; end if;
+  perform public.studio_command(course,'question_remove',jsonb_build_object('questionId',question));
+  denied:=false;begin perform public.studio_command(course,'submit','{}');exception when raise_exception then denied:=true;end;
+  if not denied then raise exception 'Incomplete course submitted'; end if;
+  denied:=false;begin perform public.studio_command(course,'edit',jsonb_build_object('lessonId','00000000-0000-0000-0000-000000000000'));exception when raise_exception then denied:=true;end;
+  if not denied then raise exception 'Foreign class accepted'; end if;
+  denied:=false;begin perform public.studio_attach_upload(course,lesson,course::text||'/'||lesson::text||'/missing.mp4','video',null);exception when raise_exception then denied:=true;end;
+  if not denied then raise exception 'Missing upload accepted'; end if;
+  perform set_config('request.jwt.claim.sub',gen_random_uuid()::text,true);
+  if public.studio_can_read_course(course) then raise exception 'Foreign user can read course'; end if;
+  denied:=false;begin perform public.studio_command(course,'add',jsonb_build_object('titles',jsonb_build_array('Unauthorized class')));exception when raise_exception then denied:=true;end;
+  if not denied then raise exception 'Foreign user can edit course'; end if;
+  perform set_config('request.jwt.claim.sub','7161f4bc-8119-4f0f-9448-6dc4f8e5869b',true);
+  update public.course_versions set published_at=now() where course_id=course;
+  if public.studio_can_edit_course(course) then raise exception 'Previously published course editable'; end if;
+  update public.course_versions set published_at=null where course_id=course;
+  update public.course_lessons set lesson_type='text',learning_objective='A documented outcome' where course_id=course;
+  perform public.create_course_review(course,auth.uid(),'Test review');
+  if public.studio_can_edit_course(course) or not exists(select 1 from public.course_reviews where course_id=course) then raise exception 'Submission did not freeze and create review'; end if;
+  raise exception using errcode='Z0001',message='rollback Studio fixtures';
+ exception when sqlstate 'Z0001' then raise notice 'PASS: create, edit, prices, reorder, duplicate, archive, restore, questions, readiness, cross-user isolation, published freeze. All fixtures rolled back.';
+ end;
+end $test$;

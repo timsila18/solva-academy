@@ -13,14 +13,14 @@ export default async function InstructorCoursesPage() {
 
   return (
     <DashboardShell>
-      <PageHeading title="Instructor courses" description="Create, edit, preview, submit, duplicate, archive, and inspect owned course versions. Bulk operations remain guarded by course permissions." />
+      <PageHeading title="Course Studio" description="Your courses" />
       <div className="mb-5 flex flex-wrap gap-2">
         <ButtonLink href="/courses/builder/new">Create course</ButtonLink>
         <ButtonLink href="/courses/reviewer" variant="outline">Review comments</ButtonLink>
       </div>
       <DataTable
         title="Owned courses"
-        description="Only real owned courses are shown; no fake learner, rating, or sales data."
+        description=""
         headers={["Course", "Status", "Visibility", "Updated", "Actions"]}
         rows={(data ?? []).map((course) => [
           course.title,

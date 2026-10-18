@@ -2,8 +2,8 @@ import { createServiceSupabaseClient } from "@/lib/supabase/server";
 
 export async function canManageCourse(courseId: string, userId: string) {
   const db = createServiceSupabaseClient();
-  const { data: course } = await db.from("courses").select("owner_id,status").eq("id", courseId).single();
-  return Boolean(course && course.owner_id === userId && !["published", "suspended", "archived"].includes(course.status));
+  const { data, error } = await db.rpc("studio_can_edit_course", { target_course_id: courseId, subject: userId });
+  return !error && data === true;
 }
 
 export async function getLearningAccess(courseId: string, userId: string, lessonId?: string) {

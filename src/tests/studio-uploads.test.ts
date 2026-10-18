@@ -1,0 +1,13 @@
+import {beforeEach,expect,it,vi} from "vitest";
+const mocks=vi.hoisted(()=>({user:{id:"owner"} as {id:string}|null,rpc:vi.fn(),canManage:vi.fn()}));
+vi.mock("@/lib/supabase/server",()=>({createServerSupabaseClient:async()=>({auth:{getUser:async()=>({data:{user:mocks.user}})},rpc:mocks.rpc}),createServiceSupabaseClient:vi.fn()}));
+vi.mock("@/lib/courses/access",()=>({canManageCourse:mocks.canManage}));
+import {POST,PUT} from "@/app/api/courses/resources/route";
+const id="37fc22f0-b065-4e13-bdd5-02852c3f950b";
+const request=(body:unknown)=>new Request("https://academy.solvaone.co.ke/api/courses/resources",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)});
+beforeEach(()=>{vi.clearAllMocks();mocks.user={id:"owner"};mocks.canManage.mockResolvedValue(false);mocks.rpc.mockResolvedValue({error:null});});
+it("rejects signed-out uploads",async()=>{mocks.user=null;expect((await POST(request({}))).status).toBe(401);});
+it("rejects oversized resources and missing rights confirmation",async()=>{expect((await POST(request({courseId:id,lessonId:id,type:"application/pdf",size:51*1024*1024,rights:true}))).status).toBe(400);expect((await POST(request({courseId:id,lessonId:id,type:"application/pdf",size:100,rights:false}))).status).toBe(400);});
+it("does not issue signed upload tokens to another course owner",async()=>{expect((await POST(request({courseId:id,lessonId:id,type:"application/pdf",size:100,rights:true}))).status).toBe(403);});
+it("uses the transaction-guarded attachment command",async()=>{expect((await PUT(request({courseId:id,lessonId:id,path:`${id}/${id}/test.pdf`,title:"Class notes",rights:true}))).status).toBe(200);expect(mocks.rpc).toHaveBeenCalledWith("studio_attach_upload",{target_course:id,target_lesson:id,object_path:`${id}/${id}/test.pdf`,kind:"resource",label:"Class notes"});});
+it("does not report success if attachment access expires during upload",async()=>{mocks.rpc.mockResolvedValue({error:{code:"P0001"}});expect((await PUT(request({courseId:id,lessonId:id,path:"file.pdf",title:"Notes",rights:true}))).status).toBe(409);});

@@ -2,19 +2,19 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { requireUserOrRedirect } from "@/lib/authorization/server";
-import { canManageCourse } from "@/lib/courses/access";
 import { createServiceSupabaseClient } from "@/lib/supabase/server";
 
 export default async function CourseChecksPage({ params }: { params: Promise<{ courseId: string }> }) {
   const { courseId } = await params;
   const user = await requireUserOrRedirect();
-  if (!await canManageCourse(courseId, user.id)) notFound();
   const db = createServiceSupabaseClient();
+  const access = await db.rpc("studio_can_read_course", { target_course_id: courseId, subject: user.id });
+  if (access.error || access.data !== true) notFound();
   const assessments = await db.from("assessments").select("id,title,status").eq("course_id", courseId).eq("assessment_type", "quiz").order("title");
   const ids = (assessments.data ?? []).map((a) => a.id);
   const quizzes = ids.length ? await db.from("quizzes").select("id,assessment_id").in("assessment_id", ids) : { data: [], error: null };
   const quizIds = (quizzes.data ?? []).map((q) => q.id);
-  const questions = quizIds.length ? await db.from("quiz_questions").select("id,quiz_id,prompt,explanation,display_order").in("quiz_id", quizIds).order("display_order") : { data: [], error: null };
+  const questions = quizIds.length ? await db.from("quiz_questions").select("id,quiz_id,prompt,explanation,display_order").in("quiz_id", quizIds).eq("status", "active").order("display_order") : { data: [], error: null };
   const questionIds = (questions.data ?? []).map((q) => q.id);
   const options = questionIds.length ? await db.from("quiz_question_options").select("id,question_id,option_text,is_correct").in("question_id", questionIds).order("display_order") : { data: [], error: null };
   const failed = assessments.error || quizzes.error || questions.error || options.error;
