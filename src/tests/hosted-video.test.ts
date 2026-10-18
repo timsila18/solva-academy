@@ -85,7 +85,10 @@ it("uploads directly to the private host in small chunks, then completes without
     vi.fn(async (input: string, options: RequestInit) => {
       const action = new URL(input).searchParams.get("action")!;
       calls.push(action);
-      if (
+      if (action === "chunk" && typeof options.body === "string") {
+        sizes.push(Buffer.from(options.body, "base64").length);
+        expect(options.headers).toMatchObject({ "X-Chunk-Encoding": "base64" });
+      } else if (
         options.body &&
         typeof options.body === "object" &&
         "size" in options.body

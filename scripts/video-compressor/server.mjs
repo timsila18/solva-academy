@@ -1,6 +1,14 @@
 import { createServer } from "node:http";
 import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
-import { readFile, mkdir, rm, stat, realpath } from "node:fs/promises";
+import {
+  readFile,
+  mkdir,
+  rm,
+  stat,
+  realpath,
+  readdir,
+  writeFile,
+} from "node:fs/promises";
 import { createReadStream } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { resolve, join, basename } from "node:path";
@@ -10,7 +18,11 @@ import {
   profiles,
   MAX_OUTPUT_BYTES,
 } from "./engine.mjs";
-import { validateDestination, uploadCompressed } from "./upload.mjs";
+import {
+  validateDestination,
+  uploadCompressed,
+  preflightUpload,
+} from "./upload.mjs";
 import { pickSource } from "./source-picker.mjs";
 import { sourceFileError } from "./source-validation.mjs";
 import { createElement } from "react";
@@ -37,6 +49,76 @@ const sources = new Map();
 let selecting = false;
 await mkdir(scratch, { recursive: true });
 await mkdir(outputDir, { recursive: true });
+// Recover compressed outputs without copying or reopening the original recording.
+for (const name of await readdir(outputDir)) {
+  const match = /-(compressed|sample)-([a-f0-9]{8})\.mp4$/.exec(name);
+  if (!match) continue;
+  const output = join(outputDir, name);
+  let saved = {};
+  try {
+    saved = JSON.parse(await readFile(output + ".job.json", "utf8"));
+  } catch {}
+  const info = await stat(output);
+  const id = saved.id ?? randomUUID();
+  jobs.set(id, {
+    modified: info.mtimeMs,
+    id,
+    name,
+    output,
+    outputBytes: info.size,
+    sourceBytes: saved.sourceBytes ?? info.size,
+    sample: match[1] === "sample",
+    targetPath: saved.targetPath,
+    destinationScope: saved.destinationScope,
+    uploadState: saved.uploadState,
+    state: "done",
+    progress: 100,
+    controller: new AbortController(),
+  });
+}
+const recoveredJobs = [...jobs.values()].sort((a,b)=>a.modified-b.modified);
+jobs.clear();
+for (const job of recoveredJobs) jobs.set(job.id,job);
+async function saveJob(job) {
+  await writeFile(
+    job.output + ".job.json",
+    JSON.stringify({
+      id: job.id,
+      sourceBytes: job.sourceBytes,
+      targetPath: job.targetPath,
+      destinationScope: job.destinationScope,
+      uploadState: job.uploadState,
+    }),
+  );
+}
+async function transfer(job, destination) {
+  job.destination = destination;
+  job.targetPath = destination.path;
+  job.destinationScope =
+    destination.provider === "hostafrica"
+      ? {
+          course: destination.course,
+          lesson: destination.lesson,
+          actor: destination.actor,
+        }
+      : undefined;
+  job.controller = new AbortController();
+  job.state = "uploading";
+  job.uploadState = "uploading";
+  job.uploadProgress = 0;
+  job.uploadError = undefined;
+  await saveJob(job);
+  try {
+    await uploadCompressed(job, destination);
+    job.uploadState = "complete";
+  } catch (error) {
+    job.uploadState = "failed";
+    job.uploadError = error.message;
+  } finally {
+    job.state = "done";
+    await saveJob(job);
+  }
+}
 function authorized(value) {
   return (
     typeof value === "string" &&
@@ -60,6 +142,7 @@ function publicJob(job) {
     uploadProgress: job.uploadProgress,
     uploadError: job.uploadError,
     targetPath: job.targetPath,
+    destinationScope: job.destinationScope,
     academyUploadLimitBytes: MAX_OUTPUT_BYTES,
   };
 }
@@ -142,6 +225,7 @@ async function compress(job) {
       );
     job.progress = 100;
     job.state = "done";
+    await saveJob(job);
   } catch (error) {
     job.state = job.controller.signal.aborted ? "cancelled" : "failed";
     job.error =
@@ -151,19 +235,7 @@ async function compress(job) {
     await rm(job.output, { force: true }).catch(() => {});
   }
   if (job.state === "done" && job.destination && !job.sample) {
-    job.state = "uploading";
-    job.uploadState = "uploading";
-    job.uploadProgress = 0;
-    try {
-      await uploadCompressed(job, job.destination);
-      job.uploadState = "complete";
-    } catch (error) {
-      job.uploadState = "failed";
-      job.uploadError = error.message;
-    } finally {
-      job.destination = undefined;
-      job.state = "done";
-    }
+    await transfer(job, job.destination);
   }
 }
 
@@ -308,6 +380,7 @@ const server = createServer(async (req, res) => {
       if (settings.destination) {
         try {
           destination = validateDestination(settings.destination);
+          await preflightUpload(destination);
         } catch (error) {
           return json(res, 400, { error: error.message });
         }
@@ -361,9 +434,50 @@ const server = createServer(async (req, res) => {
       void compress(job);
       return;
     }
-    const match = /^\/api\/jobs\/([a-f0-9-]{36})(\/file)?$/.exec(url.pathname);
+    const match = /^\/api\/jobs\/([a-f0-9-]{36})(\/file|\/upload)?$/.exec(
+      url.pathname,
+    );
     const job = match && jobs.get(match[1]);
     if (!job) return json(res, 404, { error: "Video not found." });
+    if (req.method === "POST" && match[2] === "/upload") {
+      if (job.state !== "done" || job.sample)
+        return json(res, 409, {
+          error: "A complete compressed video is required.",
+        });
+      if (
+        [...jobs.values()].some((j) =>
+          ["inspecting", "compressing", "uploading"].includes(j.state),
+        )
+      )
+        return json(res, 409, { error: "Finish the active job first." });
+      const settings = await readJson(req);
+      let destination;
+      try {
+        destination = validateDestination(
+          settings.destination ?? job.destination,
+        );
+      } catch (error) {
+        return json(res, 400, { error: error.message });
+      }
+      const sameScope =
+        job.destinationScope &&
+        destination.provider === "hostafrica" &&
+        ["course", "lesson", "actor"].every(
+          (key) => job.destinationScope[key] === destination[key],
+        );
+      if (job.targetPath && job.targetPath !== destination.path && !sameScope)
+        return json(res, 409, {
+          error: "Reconnect from the same Academy class to retry this upload.",
+        });
+      try {
+        await preflightUpload(destination);
+      } catch (error) {
+        return json(res, 400, { error: error.message });
+      }
+      json(res, 202, { id: job.id });
+      void transfer(job, destination);
+      return;
+    }
     if (req.method === "DELETE" && !match[2]) {
       if (["inspecting", "compressing", "uploading"].includes(job.state))
         job.controller.abort();
@@ -371,7 +485,7 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === "GET" && !match[2])
       return json(res, 200, publicJob(job));
-    if (req.method === "GET" && match[2] && job.state === "done") {
+    if (req.method === "GET" && match[2] === "/file" && job.state === "done") {
       return await streamFile(
         req,
         res,

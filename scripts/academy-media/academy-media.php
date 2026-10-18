@@ -9,7 +9,7 @@ if (in_array($origin, ['https://academy.solvaone.co.ke', 'http://127.0.0.1:3002'
     header('Access-Control-Allow-Origin: '.$origin);
     header('Vary: Origin');
     header('Access-Control-Allow-Methods: POST, GET, HEAD, OPTIONS');
-    header('Access-Control-Allow-Headers: Content-Type, X-Chunk-Digest, Range');
+    header('Access-Control-Allow-Headers: Content-Type, X-Chunk-Digest, X-Chunk-Encoding, Range');
     header('Access-Control-Expose-Headers: Content-Length, Content-Range, Accept-Ranges');
 }
 if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') { http_response_code(204); exit; }
@@ -87,8 +87,12 @@ if ($action==='offset') {
 if ($action==='chunk') {
     $index=filter_var($_GET['index']??'',FILTER_VALIDATE_INT);
     if ($index===false || $index<0 || $index>=ceil(MAX_BYTES/CHUNK_BYTES)) reject(400);
-    if ((int)($_SERVER['CONTENT_LENGTH']??0)>CHUNK_BYTES) reject(413);
-    $bytes=file_get_contents('php://input',false,null,0,CHUNK_BYTES+1);
+    $encoded=($_SERVER['HTTP_X_CHUNK_ENCODING']??'')==='base64';
+    $bodyLimit=$encoded ? 4*intval(ceil(CHUNK_BYTES/3)) : CHUNK_BYTES;
+    if ((int)($_SERVER['CONTENT_LENGTH']??0)>$bodyLimit) reject(413);
+    $bytes=file_get_contents('php://input',false,null,0,$bodyLimit+1);
+    if ($bytes===false || strlen($bytes)>$bodyLimit) reject(413);
+    if ($encoded) $bytes=base64_decode($bytes,true);
     if ($bytes===false || strlen($bytes)<1 || strlen($bytes)>CHUNK_BYTES) reject(413);
     $digest=$_SERVER['HTTP_X_CHUNK_DIGEST']??'';
     if (!preg_match('/\A[a-f0-9]{64}\z/',$digest) || !hash_equals($digest,hash('sha256',$bytes))) reject(422);

@@ -38,3 +38,24 @@ Database migrations 0027-0029 cover the 350 MB fallback bucket limit, scoped hos
 - Keep the class page open during helper upload for immediate attachment. Reopening an editable class checks its latest unexpired pending receipt and can finish the verified attachment. If an interrupted direct browser upload has no running helper, cancel it and reselect the compressed file.
 - The original remains where the user selected it; the system does not delete it. Only compressed output and compressed staging chunks are created.
 - Do not rotate an existing Academy signing secret without a coordinated deployment. Existing uploads/links rely on that secret until expiry.
+# Upload Recovery
+
+Compressed MP4s are retained in the local `compressed-videos` folder. An upload
+failure never requires another encode. The helper shows **Retry upload only** and
+resumes from the host's acknowledged chunk checkpoint. Reopening the helper also
+recovers completed outputs; small sidecar files preserve class bindings without
+storing upload signatures, signing secrets, or original recording paths.
+
+If authorization expires, reconnect from the same Academy class and retry the
+saved output. A renewed ticket must match the original actor, course, and lesson.
+The destination is checked before starting a connected compression job, but a
+later outage can still interrupt transfer. Keep the compressed output until the
+class shows its saved video.
+
+Chunks use base64 text transport to avoid raw MP4 byte sequences being mistaken
+for malicious request bodies by shared-host request filters. The receiver strictly
+decodes each bounded chunk and verifies its original SHA-256 digest. Transfer
+encoding adds approximately one third to network bytes, not to the stored MP4
+size. Existing raw chunk clients remain supported. Authentication, private paths,
+expiry, byte ceilings, and final MP4 validation are unchanged.
+

@@ -113,6 +113,29 @@ export function uploadCompressed(job, destination) {
     else upload.start();
   });
 }
+export async function preflightUpload(destination) {
+  const ticket = validateDestination(destination);
+  if (ticket.provider !== "hostafrica") return;
+  const { id, course, lesson, actor, expires, signature } = ticket;
+  const query = new URLSearchParams({
+    action: "offset",
+    id,
+    course,
+    lesson,
+    actor,
+    expires: String(expires),
+    signature,
+  });
+  const response = await fetch(ticket.endpoint + "?" + query, {
+    method: "POST",
+    redirect: "error",
+    signal: AbortSignal.timeout(15000),
+  });
+  if (!response.ok)
+    throw new Error(
+      `Video host is not ready (HTTP ${response.status}). Compression has not started; reconnect from your Academy class.`,
+    );
+}
 async function uploadHosted(job, ticket) {
   if (job.outputBytes > 350000000)
     throw new Error("Compressed video exceeds 350 MB.");
@@ -142,10 +165,11 @@ async function uploadHosted(job, ticket) {
           redirect: "error",
           signal: job.controller.signal,
           headers: {
-            "Content-Type": "application/octet-stream",
+            "Content-Type": body ? "text/plain" : "application/octet-stream",
+            ...(body ? { "X-Chunk-Encoding": "base64" } : {}),
             ...(digest ? { "X-Chunk-Digest": digest } : {}),
           },
-          body,
+          body: body ? body.toString("base64") : undefined,
         });
         if (response.ok) {
           const data = await response.json();
@@ -156,10 +180,13 @@ async function uploadHosted(job, ticket) {
             throw new Error("Upload verification failed.");
           return data;
         }
-        if (response.status < 500)
-          throw new Error(
-            "Upload rejected. Reconnect from the Academy class and retry.",
-          );
+        if (response.status < 500) {
+          const message =
+            response.status === 401
+              ? "Upload authorization expired. Reconnect from your Academy class; the compressed video is saved."
+              : `Video host rejected ${index === undefined ? action : `chunk ${index + 1}`} (HTTP ${response.status}). Compressed video is saved; retry upload only.`;
+          throw new Error(message);
+        }
       } catch (error) {
         if (job.controller.signal.aborted || attempt === 3) throw error;
       }

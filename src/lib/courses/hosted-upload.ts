@@ -33,6 +33,14 @@ export async function uploadHostedVideo(
     index?: number,
     digest?: string,
   ) {
+    let encoded: string | undefined;
+    if (body) {
+      const bytes = new Uint8Array(await body.arrayBuffer());
+      const parts: string[] = [];
+      for (let i = 0; i < bytes.length; i += 32768)
+        parts.push(String.fromCharCode(...bytes.subarray(i, i + 32768)));
+      encoded = btoa(parts.join(""));
+    }
     const query = new URLSearchParams(params);
     query.set("action", action);
     if (index !== undefined) query.set("index", String(index));
@@ -47,10 +55,11 @@ export async function uploadHostedVideo(
           method: "POST",
           signal,
           headers: {
-            "Content-Type": "application/octet-stream",
+            "Content-Type": body ? "text/plain" : "application/octet-stream",
+            ...(body ? { "X-Chunk-Encoding": "base64" } : {}),
             ...(digest ? { "X-Chunk-Digest": digest } : {}),
           },
-          body,
+          body: encoded,
         });
         if (response.ok) return await response.json();
         if (response.status < 500 && response.status !== 429)
