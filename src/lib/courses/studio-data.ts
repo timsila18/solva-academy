@@ -98,15 +98,26 @@ export async function getStudioCourse(courseId: string, userId: string) {
   ]);
   if (blocks.error || prices.error)
     throw new Error("Course media or pricing could not load.");
+  const hosted = await db
+    .from("course_video_uploads")
+    .select("id,lesson_id,status,expires_at")
+    .eq("course_id", courseId)
+    .order("created_at", {ascending:false});
+  if (hosted.error) throw new Error("Private video status could not load.");
   const enriched = classes.map((l) => ({
     ...l,
+    pendingVideoUpload: hosted.data?.find(u=>u.lesson_id===l.id && u.status==="pending" && new Date(u.expires_at).getTime()>Date.now())?.id,
     videoAttached: Boolean(
       blocks.data?.some(
         (b) =>
           b.lesson_id === l.id &&
-          b.content?.bucket === "course-media" &&
-          typeof b.content?.path === "string" &&
-          b.content.path.startsWith(`${courseId}/${l.id}/`),
+          ((b.content?.provider === "hostafrica" &&
+            hosted.data?.some(
+              (u) => u.id === b.content.uploadId && u.lesson_id === l.id && u.status === "attached",
+            )) ||
+            (b.content?.bucket === "course-media" &&
+              typeof b.content?.path === "string" &&
+              b.content.path.startsWith(`${courseId}/${l.id}/`))),
       ),
     ),
     priceKes:

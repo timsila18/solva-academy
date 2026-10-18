@@ -42,8 +42,9 @@ Manual checklist:
 
 ## Known boundaries
 
-- MP4 uploads remain limited to 100 MiB; resources to 50 MiB. This is not a large-video resumable upload service.
-- The separate local compressor is not automatically invoked by Course Studio. It is not a hosted compressor for other owners.
+- Compressed MP4 uploads are capped at 350,000,000 bytes; resources remain capped at 50 MiB.
+- Course Studio can open the locally installed compressor for large originals. Compression reads the original directly, uses two-pass H.264 encoding within a duration-based budget, and rejects output over the ceiling. Only compressed output is uploaded. It is not a cloud compressor for devices without the helper.
+- Academy video storage uses the separately configured HostAfrica/DirectAdmin endpoint. Supabase remains responsible for identities, course records, authorizations and upload receipts. Existing Supabase-hosted videos remain supported.
 - No real teaching video was available for production playback testing. Browser automation was disabled, so interactive visual verification remains manual.
 - New-version branching for published/purchased courses and delegated co-author workflows are deferred; those courses are intentionally read-only.
 - Existing platform course-review administration needs further completion; a submission creates its review record but Studio does not auto-approve or publish it.

@@ -115,9 +115,10 @@ export default async function ClassEditor({
               {lesson.videoAttached
                 ? "Video attached. A new upload replaces the attached video."
                 : "Awaiting video."}{" "}
-              MP4, up to 100 MB.
+            Compressed MP4, up to 350 MB. Larger originals use the local compressor.
             </p>
-            <VideoUpload courseId={courseId} lessonId={lessonId} />
+          {lesson.videoAttached&&<video controls preload="none" src={`/api/courses/media/preview?courseId=${courseId}&lessonId=${lessonId}`} aria-label="Class video preview" className="my-4 aspect-video w-full max-w-4xl bg-black"/>}
+          <VideoUpload courseId={courseId} lessonId={lessonId} pendingUploadId={lesson.pendingVideoUpload}/>
           </section>
           <section className="border-t border-border py-6">
             <h2 className="font-semibold">Knowledge checks</h2>

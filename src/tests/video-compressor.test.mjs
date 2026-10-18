@@ -1,6 +1,6 @@
 import { expect, it, vi, afterEach } from "vitest";
 import { readFile } from "node:fs/promises";
-import { encodingArguments } from "../../scripts/video-compressor/engine.mjs";
+import { encodingArguments, compressionPlan, MAX_OUTPUT_BYTES } from "../../scripts/video-compressor/engine.mjs";
 import { sourceFileError } from "../../scripts/video-compressor/source-validation.mjs";
 afterEach(()=>vi.restoreAllMocks());
 it("does not impose the old 8 GB cap and reports invalid sources accurately",()=>{
@@ -31,7 +31,7 @@ it("has labelled controls, accessible progress and no third-party scripts",async
   expect(document.querySelector("[role=alert]")).not.toBeNull();
   expect(document.querySelectorAll("script[src]")).toHaveLength(0);
   expect(document.querySelector("#sample").checked).toBe(true);
-  expect(html).toContain("100 MB upload limit");
+  expect(html).toContain("350 MB upload limit");
   expect(html).toContain("No original-file copy or upload");
   expect(html).not.toContain("Up to 8 GB");
   expect(html).not.toContain("xhr.send(file)");
@@ -40,6 +40,13 @@ it("has labelled controls, accessible progress and no third-party scripts",async
   expect(document.querySelector("#source-preview").getAttribute("preload")).toBe("none");
   const script=/<script nonce="__NONCE__">([\s\S]+)<\/script>/.exec(html)?.[1];
   expect(()=>new Function(script)).not.toThrow();
+});
+it("fits the bitrate budget to duration with room for audio and container overhead",()=>{
+ const plan=compressionPlan(900,"quality");expect((plan.videoBitrate+plan.audioBitrate)*900/8).toBeLessThan(MAX_OUTPUT_BYTES);
+ expect(compressionPlan(3600,"balanced").videoBitrate).toBeLessThan(1000000);
+ expect(()=>compressionPlan(Infinity,"balanced")).toThrow();expect(()=>compressionPlan(900,"bad")).toThrow();
+ expect(()=>compressionPlan(86400,"quality")).toThrow(/shorter classes/);
+ const args=encodingArguments("original.mov","compressed.mp4","quality",false,plan);expect(args).not.toContain("-crf");expect(args).toContain(String(plan.videoBitrate));
 });
 it("shows the selected recording, enables compression and updates the size estimate",async()=>{
   const html=await readFile("scripts/video-compressor/index.html","utf8");document.body.innerHTML=html;
