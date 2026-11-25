@@ -1,7 +1,13 @@
-import { describe, expect, it } from "vitest";
-import { normalizeKenyanPhone, parseMpesaCallback, initiateMpesaStkPush } from "@/lib/payments/mpesa";
+import { describe, expect, it, vi, afterEach } from "vitest";
+import { normalizeKenyanPhone, parseMpesaCallback, initiateMpesaStkPush, isMpesaConfigured } from "@/lib/payments/mpesa";
+afterEach(()=>vi.unstubAllEnvs());
 
 describe("M-Pesa helpers", () => {
+  it('never enables sandbox credentials on the production site',()=>{
+    for(const key of ['MPESA_CONSUMER_KEY','MPESA_CONSUMER_SECRET','MPESA_SHORTCODE','MPESA_PASSKEY','MPESA_CALLBACK_TOKEN'])vi.stubEnv(key,'sandbox-value');
+    vi.stubEnv('SITE_ENV','production');vi.stubEnv('MPESA_ENV','sandbox');expect(isMpesaConfigured()).toBe(false);
+    vi.stubEnv('MPESA_ENV','production');expect(isMpesaConfigured()).toBe(true);
+  });
   it("never simulates a payment when credentials are missing", async () => {
     await expect(initiateMpesaStkPush({ amountMinor: 10000, phone: "0712345678", accountReference: "test", description: "test" })).rejects.toThrow();
   });

@@ -65,8 +65,16 @@ a {
 
 .solva-surface {
   background:
-    radial-gradient(circle at 8% 0%, color-mix(in srgb, var(--primary) 26%, transparent) 0, transparent 27rem),
-    radial-gradient(circle at 95% 20%, color-mix(in srgb, var(--primary) 16%, transparent) 0, transparent 22rem),
+    radial-gradient(
+      circle at 8% 0%,
+      color-mix(in srgb, var(--primary) 26%, transparent) 0,
+      transparent 27rem
+    ),
+    radial-gradient(
+      circle at 95% 20%,
+      color-mix(in srgb, var(--primary) 16%, transparent) 0,
+      transparent 22rem
+    ),
     linear-gradient(180deg, #000000 0%, #05070a 100%);
 }
 
@@ -78,5 +86,21 @@ a {
     animation-iteration-count: 1 !important;
     scroll-behavior: auto !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+@media print {
+  :root {
+    --background: #ffffff;
+    --foreground: #111111;
+    --muted-foreground: #444444;
+    --border: #cccccc;
+  }
+  body {
+    background: white;
+    color: #111111;
+  }
+  a {
+    overflow-wrap: anywhere;
   }
 }

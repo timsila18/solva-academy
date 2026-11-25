@@ -106,6 +106,7 @@ export async function initiateMpesaStkPush({
 }
 
 export function isMpesaConfigured() {
+  if (process.env.SITE_ENV === 'production' && process.env.MPESA_ENV !== 'production') return false;
   return ["MPESA_CONSUMER_KEY", "MPESA_CONSUMER_SECRET", "MPESA_SHORTCODE", "MPESA_PASSKEY", "MPESA_CALLBACK_TOKEN"]
     .every((key) => Boolean(process.env[key]));
 }

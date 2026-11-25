@@ -45,6 +45,12 @@ export default async function CourseStudio({
         </p>
       )}
       <div className="mb-6 flex flex-wrap justify-between gap-3 text-sm text-muted-foreground">
+        <Link
+          href={`/courses/builder/${courseId}/completion`}
+          className="text-primary underline"
+        >
+          Completion and certificates
+        </Link>
         <span>
           {active.length} classes · {ready} ready
         </span>
