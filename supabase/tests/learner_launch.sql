@@ -1,5 +1,6 @@
 do $test$
 declare owner uuid; workspace uuid; learner uuid:=gen_random_uuid(); course uuid:=gen_random_uuid(); version uuid:=gen_random_uuid(); module uuid:=gen_random_uuid(); lesson uuid:=gen_random_uuid(); entitlement uuid:=gen_random_uuid(); enrollment uuid:=gen_random_uuid(); assessment uuid:=gen_random_uuid(); quiz uuid:=gen_random_uuid(); question uuid:=gen_random_uuid(); good uuid:=gen_random_uuid(); bad uuid:=gen_random_uuid(); attempt uuid; again uuid; denied boolean;
+ buyer uuid:=gen_random_uuid(); episode uuid:=gen_random_uuid(); order_id uuid:=gen_random_uuid(); foreign_lesson uuid:=gen_random_uuid(); foreign_assessment uuid:=gen_random_uuid(); foreign_quiz uuid:=gen_random_uuid(); class_attempt uuid;
 begin
  begin
   select user_id into owner from public.platform_founder limit 1;
@@ -17,6 +18,36 @@ begin
   insert into public.quiz_question_options(id,question_id,option_text,is_correct,display_order) values(good,question,'Correct',true,1),(bad,question,'Wrong',false,2);
   update public.course_versions set status='published' where id=version;
   if (select status from public.assessments where id=assessment)<>'active' then raise exception 'Publish did not activate checks'; end if;
+  insert into auth.users(id,email,raw_user_meta_data,email_confirmed_at) values(buyer,'rollback-'||buyer::text||'@example.invalid','{"full_name":"Class Buyer"}',now());
+  insert into public.orders(id,customer_id,order_number,status,payment_status) values(order_id,buyer,'rollback-'||order_id::text,'paid','paid');
+  insert into public.episode_entitlements(id,learner_id,course_id,lesson_id,version_id,order_id) values(episode,buyer,course,lesson,version,order_id);
+  insert into public.course_lessons(id,course_id,module_id,version_id,title,slug,lesson_type,display_order,required) values(foreign_lesson,course,module,version,'Unpurchased class','other','video',2,false);
+  insert into public.assessments(id,course_id,module_id,lesson_id,assessment_type,title,status) values(foreign_assessment,course,module,foreign_lesson,'quiz','Other check','active');
+  insert into public.quizzes(id,assessment_id) values(foreign_quiz,foreign_assessment);
+  denied:=false;begin perform public.learning_start_check(episode,foreign_quiz,buyer);exception when raise_exception then denied:=true;end;
+  if not denied then raise exception 'Class buyer reached another class check';end if;
+  denied:=false;begin perform public.learning_start_check(episode,quiz,learner);exception when raise_exception then denied:=true;end;
+  if not denied then raise exception 'Foreign learner used class purchase';end if;
+  class_attempt:=public.learning_start_check(episode,quiz,buyer);
+  if class_attempt<>public.learning_start_check(episode,quiz,buyer) then raise exception 'Duplicate class attempt';end if;
+  perform public.learning_save_check(class_attempt,buyer,jsonb_build_object(question,bad));
+  perform public.learning_submit_check(class_attempt,buyer,jsonb_build_object(question,bad));
+  if (select passed from public.quiz_attempts where id=class_attempt) then raise exception 'Class wrong answer passed';end if;
+  class_attempt:=public.learning_start_check(episode,quiz,buyer);
+  update public.episode_entitlements set ends_at=now()-interval '1 minute' where id=episode;
+  denied:=false;begin perform public.learning_save_check(class_attempt,buyer,jsonb_build_object(question,good));exception when raise_exception then denied:=true;end;
+  if not denied then raise exception 'Expired class purchase saved answers';end if;
+  update public.episode_entitlements set ends_at=null where id=episode;
+  perform public.learning_submit_check(class_attempt,buyer,jsonb_build_object(question,good));
+  if not (select passed from public.quiz_attempts where id=class_attempt) then raise exception 'Class correct answer failed';end if;
+  denied:=false;begin perform public.learning_start_check(episode,quiz,buyer);exception when raise_exception then denied:=true;end;
+  if not denied then raise exception 'Class attempt limit ignored';end if;
+  if exists(select 1 from public.enrollments where learner_id=buyer and course_id=course) then raise exception 'Class check created full enrollment';end if;
+  denied:=false;begin perform public.issue_certificate_for_enrollment(episode,buyer);exception when raise_exception then denied:=true;end;
+  if not denied then raise exception 'Class check awarded full-course certificate';end if;
+  update public.episode_entitlements set status='revoked' where id=episode;
+  denied:=false;begin perform public.learning_attempt_access(class_attempt,buyer);exception when raise_exception then denied:=true;end;
+  if not denied then raise exception 'Revoked class purchase retained check access';end if;
   if public.learning_refresh_completion(enrollment,learner) then raise exception 'Incomplete learning completed'; end if;
   attempt:=public.learning_start_check(enrollment,quiz,learner);again:=public.learning_start_check(enrollment,quiz,learner);
   if attempt<>again then raise exception 'Duplicate attempt'; end if;
@@ -46,6 +77,6 @@ begin
   denied:=false;begin perform public.learning_check_access(enrollment,learner);exception when raise_exception then denied:=true;end;
   if not denied then raise exception 'Revoked access accepted';end if;
   raise exception using errcode='Z0001',message='Rollback fixtures';
- exception when sqlstate 'Z0001' then raise notice 'PASS: published checks, attempt idempotency, wrong answers, limits, foreign access, completion, certificate gating, privilege restrictions, revocation. All fixtures rolled back.';
+ exception when sqlstate 'Z0001' then raise notice 'PASS: course and class checks, ownership, class scope, expiry, retries, idempotency, certificate isolation, completion, private answer keys, revocation. All fixtures rolled back.';
  end;
 end $test$;

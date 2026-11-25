@@ -1,5 +1,4 @@
 import { createServiceSupabaseClient } from "@/lib/supabase/server";
-import { getLearningAccess } from "@/lib/courses/access";
 type SnapshotQuestion = {
   id: string;
   prompt: string;
@@ -89,16 +88,11 @@ export async function getLearnerCheck(id: string, userId: string) {
     .eq("id", id)
     .maybeSingle();
   if (error || !attempt) return null;
-  const { data: e } = await db
-    .from("enrollments")
-    .select("course_id,learner_id")
-    .eq("id", attempt.enrollment_id)
-    .eq("learner_id", userId)
-    .maybeSingle();
-  if (!e) return null;
-  const access = await getLearningAccess(e.course_id, userId);
-  if (!access || access.episodeOnly || access.id !== attempt.enrollment_id)
-    return null;
+  const { error: accessError } = await db.rpc("learning_attempt_access", {
+    target_attempt: id,
+    subject: userId,
+  });
+  if (accessError) return null;
   const { data: quiz } = await db
     .from("quizzes")
     .select("assessment_id")
@@ -107,7 +101,7 @@ export async function getLearnerCheck(id: string, userId: string) {
   const { data: a } = quiz
     ? await db
         .from("assessments")
-        .select("title,lesson_id")
+        .select("title,lesson_id,course_id")
         .eq("id", quiz.assessment_id)
         .maybeSingle()
     : { data: null };
@@ -124,7 +118,7 @@ export async function getLearnerCheck(id: string, userId: string) {
   }
   return projectCheck(
     attempt,
-    { courseId: e.course_id, lessonId: a.lesson_id, title: a.title },
+    { courseId: a.course_id, lessonId: a.lesson_id, title: a.title },
     answers,
   );
 }

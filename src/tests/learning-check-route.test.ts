@@ -1,6 +1,6 @@
 import {beforeEach,expect,it,vi} from 'vitest';
 const mocks=vi.hoisted(()=>({getUser:vi.fn(),rpc:vi.fn(),check:vi.fn()}));
-vi.mock('@/lib/supabase/server',()=>({createServerSupabaseClient:async()=>({auth:{getUser:mocks.getUser}}),createServiceSupabaseClient:()=>({rpc:mocks.rpc})}));
+vi.mock('@/lib/supabase/server',()=>({createServerSupabaseClient:async()=>({auth:{getUser:mocks.getUser}}),createServiceSupabaseClient:()=>({rpc:mocks.rpc,from:()=>({select:()=>({eq:()=>({single:async()=>({data:{enrollment_id:null}})})})})})}));
 vi.mock('@/lib/learning/checks',()=>({getLearnerCheck:mocks.check}));
 import {PUT,POST} from '@/app/api/learning/checks/[attemptId]/route';
 const id='00000000-0000-4000-8000-000000000001';
@@ -23,4 +23,9 @@ it('does not return any attempt details after a denied server access check',asyn
 it('binds saved answers to the authenticated user and the requested attempt',async()=>{
  mocks.rpc.mockResolvedValue({error:null});mocks.check.mockResolvedValue({id,status:'in_progress'});
  const r=await PUT(request(JSON.stringify({answers:{[id]:id}})),context);expect(r.status).toBe(200);expect(mocks.rpc).toHaveBeenCalledWith('learning_save_check',{target_attempt:id,subject:'learner',responses:{[id]:id}});expect(r.headers.get('cache-control')).toBe('no-store');
+});
+it('does not grant full-course completion when a class-only test is submitted',async()=>{
+ mocks.rpc.mockResolvedValue({error:null});mocks.check.mockResolvedValue({id,status:'passed'});
+ const r=await POST(request(JSON.stringify({answers:{[id]:id}})),context);expect(r.status).toBe(200);
+ expect(mocks.rpc).toHaveBeenCalledTimes(1);expect(mocks.rpc).toHaveBeenCalledWith('learning_submit_check',expect.objectContaining({subject:'learner'}));
 });

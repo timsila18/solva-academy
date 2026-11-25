@@ -248,8 +248,9 @@ export default async function PublicCoursePage({
         <h2 className="text-xl font-semibold">What your purchase includes</h2>
         <p className="mt-3 text-sm">
           The full course includes its published classes and attached learning
-          resources. An individual-class purchase covers only that class; it
-          does not include the full-course certificate.
+          resources. An individual-class purchase includes that class, its
+          available tests and resources. It does not include the full-course
+          certificate.
         </p>
         {course.certificate_available && (
           <p className="mt-3 text-sm">

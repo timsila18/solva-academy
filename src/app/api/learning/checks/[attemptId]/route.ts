@@ -74,7 +74,7 @@ async function mutate(request: Request, { params }: Context, submit: boolean) {
       .select("enrollment_id")
       .eq("id", attemptId)
       .single();
-    if (a)
+    if (a?.enrollment_id)
       await db.rpc("learning_refresh_completion", {
         target_enrollment: a.enrollment_id,
         subject: user.id,

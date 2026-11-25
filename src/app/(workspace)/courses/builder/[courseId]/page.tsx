@@ -46,6 +46,12 @@ export default async function CourseStudio({
       )}
       <div className="mb-6 flex flex-wrap justify-between gap-3 text-sm text-muted-foreground">
         <Link
+          href={`/courses/builder/${courseId}/readiness`}
+          className="text-primary underline"
+        >
+          Launch checklist
+        </Link>
+        <Link
           href={`/courses/builder/${courseId}/completion`}
           className="text-primary underline"
         >
@@ -171,7 +177,7 @@ export default async function CourseStudio({
             ))}
         </details>
       )}
-      <details className="border-t border-border py-5">
+      <details id="details" className="border-t border-border py-5">
         <summary className="cursor-pointer font-semibold">
           Course details & pricing
         </summary>
@@ -220,7 +226,7 @@ export default async function CourseStudio({
           Review existing knowledge checks
         </Link>
       </details>
-      <section className="border-t border-border py-5">
+      <section id="publication" className="border-t border-border py-5">
         <h2 className="font-semibold">Publication review</h2>
         <p className="my-3 text-sm text-muted-foreground">
           {ready} of {active.length} classes have a video and learning outcomes.

@@ -76,6 +76,10 @@ export default async function CoursePlayerPage({
     lessons.find((lesson) => lesson.id === (selectedId ?? resume?.lesson_id)) ??
     lessons[0];
   if (!course) notFound();
+  const checkAccess =
+    enrollment.episodeOnly && selected
+      ? await getLearningAccess(courseId, user.id, selected.id)
+      : enrollment;
   const { data: progress } = enrollment.episodeOnly
     ? { data: [] }
     : await db
@@ -86,7 +90,7 @@ export default async function CoursePlayerPage({
     ? await db
         .from("episode_progress")
         .select("last_position_seconds")
-        .eq("entitlement_id", enrollment.id)
+        .eq("entitlement_id", checkAccess?.id ?? enrollment.id)
         .maybeSingle()
     : { data: null };
   const { data: blocks } = selected
@@ -125,7 +129,7 @@ export default async function CoursePlayerPage({
         .neq("download_permission", "none")
     : { data: [] };
   const { data: checks } =
-    selected && !enrollment.episodeOnly
+    selected && checkAccess
       ? await db
           .from("assessments")
           .select(
@@ -135,6 +139,24 @@ export default async function CoursePlayerPage({
           .eq("lesson_id", selected.id)
           .eq("status", "active")
           .eq("review_method", "automated")
+      : { data: [] };
+  const quizIds = (checks ?? []).flatMap((c) =>
+    (Array.isArray(c.quizzes) ? c.quizzes : c.quizzes ? [c.quizzes] : []).map(
+      (q) => q.id,
+    ),
+  );
+  const { data: attempts } =
+    checkAccess && quizIds.length
+      ? await db
+          .from("quiz_attempts")
+          .select("id,quiz_id,status,attempt_number,score,max_score,passed")
+          .eq(
+            enrollment.episodeOnly ? "episode_entitlement_id" : "enrollment_id",
+            checkAccess.id,
+          )
+          .in("quiz_id", quizIds)
+          .neq("status", "invalidated")
+          .order("attempt_number", { ascending: false })
       : { data: [] };
   const completed =
     progress?.filter((p) => p.status === "completed").length ?? 0;
@@ -261,6 +283,11 @@ export default async function CoursePlayerPage({
                   passing_score: number | null;
                   attempts_allowed: number | null;
                 } | null;
+                const history =
+                  attempts?.filter((a) => a.quiz_id === q?.id) ?? [];
+                const latest = history[0];
+                const canRetry =
+                  !q?.attempts_allowed || history.length < q.attempts_allowed;
                 return q ? (
                   <form
                     key={c.id}
@@ -270,7 +297,7 @@ export default async function CoursePlayerPage({
                     <input
                       type="hidden"
                       name="enrollmentId"
-                      value={enrollment.id}
+                      value={checkAccess?.id ?? enrollment.id}
                     />
                     <input type="hidden" name="quizId" value={q.id} />
                     <input type="hidden" name="courseId" value={courseId} />
@@ -281,10 +308,38 @@ export default async function CoursePlayerPage({
                         {q.passing_score ?? 70}% ·{" "}
                         {q.attempts_allowed ?? "Unlimited"} attempts
                       </p>
+                      {latest && latest.status !== "in_progress" && (
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Last result: {latest.score}/{latest.max_score} ·{" "}
+                          {latest.passed ? "Passed" : "Not passed"}
+                        </p>
+                      )}
                     </div>
-                    <Button variant="outline" type="submit">
-                      Open check
-                    </Button>
+                    <div className="flex flex-wrap items-center gap-4">
+                      {latest && (
+                        <Link
+                          href={`/learn/quiz/${latest.id}`}
+                          className="text-sm text-primary underline"
+                        >
+                          {latest.status === "in_progress"
+                            ? "Continue check"
+                            : "View result"}
+                        </Link>
+                      )}
+                      {(!latest ||
+                        (latest.status !== "in_progress" && canRetry)) && (
+                        <Button variant="outline" type="submit">
+                          {latest ? "Try again" : "Start check"}
+                        </Button>
+                      )}
+                      {latest &&
+                        latest.status !== "in_progress" &&
+                        !canRetry && (
+                          <span className="text-xs text-muted-foreground">
+                            No attempts remaining
+                          </span>
+                        )}
+                    </div>
                   </form>
                 ) : null;
               })}

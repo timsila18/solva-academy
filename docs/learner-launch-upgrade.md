@@ -15,6 +15,12 @@ completed successfully; a follow-up query confirmed zero remaining rollback
 users or courses, protected answer snapshots and issuance RPC, and the unchanged
 16-class HR draft. No real completion award was created by the tests.
 
+Migration 0031 adds class-entitlement checks and was applied and recorded on
+25 November 2026. The expanded rollback integration test passed, including
+class-only scoring, retries, cross-class denial, expiry, revocation, and denial
+of full-course awards for class-only access. A follow-up check again confirmed
+zero fixture users or courses and the unchanged private HR draft.
+
 Apply `0030_learner_checks_and_records.sql` to the Academy project only, after
 owner approval. Then run `supabase/tests/learner_launch.sql`. The integration test
 creates temporary fixtures inside a rolled-back exception block, not permanent
@@ -53,9 +59,10 @@ database clients. New grants expose only non-secret attempt metadata.
 - Practice retries respect instructor attempt limits. Time-limited checks fail
   answers submitted after the deadline. Randomized delivery and manual grading
   are not implemented here; single-choice automated checks are supported.
-- Individual-class access includes the purchased class and attached resources.
-  This release's scored-check attempts and course-completion certificate require
-  a full-course enrollment. Do not advertise full-course awards for class buys.
+- Individual-class access includes the purchased class, attached resources, and
+  that class's scored checks. Attempts retain the exact class entitlement and
+  enforce expiry, revocation, ownership, and retry limits. Individual purchases
+  do not grant a full-course enrollment or course-completion certificate.
 - Completion requires all required version-scoped lessons and required supported
   checks. Unknown custom rules and required manual assignments fail closed.
 - Certificates require the instructor's explicit enablement, valid current
@@ -67,6 +74,13 @@ database clients. New grants expose only non-secret attempt metadata.
   are generated locally, without sending learner names to a QR service.
 
 ## Manual checklist
+
+- Open Course Studio > Launch checklist. Follow a missing video's link to its
+  class editor. Verify review requirements, pricing, payment setup, publication,
+  and optional improvements are clearly distinguished on desktop and mobile.
+- With two separate class purchases, select each class and confirm its tests and
+  saved position use the selected class's access. Try opening an unpurchased
+  class test; access must be denied. Review a finished result without using a retry.
 
 - Register and sign in on desktop and a narrow mobile viewport.
 - Verify the same learner resumes the correct class and position after reload.

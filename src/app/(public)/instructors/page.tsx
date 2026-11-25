@@ -1,30 +1,58 @@
-import { SkillCloud } from "@/components/catalog/learning-structure";
+import Link from "next/link";
 import { ButtonLink } from "@/components/ui/button";
 import { EmptyState } from "@/components/feedback/empty-state";
-import { coreSkills } from "@/lib/catalog/learning-structure";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
 
-export default function InstructorsPage() {
+export default async function InstructorsPage() {
+  const db = await createServerSupabaseClient();
+  const { data: instructors, error } = await db
+    .from("instructor_profiles")
+    .select("id,slug,biography,teaching_languages")
+    .eq("status", "active")
+    .eq("public_visibility", "public")
+    .order("created_at", { ascending: false })
+    .limit(60);
   return (
     <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-3xl font-semibold">Instructors</h1>
           <p className="mt-2 max-w-3xl text-muted-foreground">
-            Public instructor profiles appear only after real instructor approval and visibility settings.
+            Meet the people behind the courses.
           </p>
         </div>
         <ButtonLink href="/instructors/apply">Apply to teach</ButtonLink>
       </div>
       <div className="mt-8">
-        <EmptyState title="No public instructors yet" description="Instructor ratings and reviews are placeholders until real course delivery exists." />
-      </div>
-      <div className="mt-12 rounded-md border border-border bg-card p-6">
-        <p className="text-sm font-semibold uppercase tracking-wide text-primary">Instructor specializations</p>
-        <h2 className="mt-3 text-3xl font-semibold">Instructor profiles will connect to schools and verified skills.</h2>
-        <p className="mt-2 max-w-3xl text-muted-foreground">
-          This gives learners a Coursera-like way to judge fit: not only by name, but by school, skills, academy, language, verification level, and teaching format.
-        </p>
-        <div className="mt-6"><SkillCloud skills={coreSkills} /></div>
+        {error ? (
+          <p role="alert">Instructors could not load. Please try again.</p>
+        ) : instructors?.length ? (
+          <div className="divide-y divide-border border-y border-border">
+            {instructors.map((i) => (
+              <article key={i.id} className="py-5">
+                <h2 className="text-lg font-semibold capitalize">
+                  <Link href={`/instructors/${i.slug}`}>
+                    {i.slug.replaceAll("-", " ")}
+                  </Link>
+                </h2>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  {i.biography}
+                </p>
+                <Link
+                  href={`/instructors/${i.slug}`}
+                  className="mt-3 inline-block text-sm text-primary underline"
+                >
+                  View instructor
+                </Link>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <EmptyState
+            title="Instructors"
+            description="Instructor profiles will appear here as they join."
+          />
+        )}
       </div>
     </section>
   );
