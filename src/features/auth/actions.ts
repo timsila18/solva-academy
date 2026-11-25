@@ -6,11 +6,13 @@ import {
   forgotPasswordSchema,
   signInSchema,
   signUpSchema,
+  resetPasswordSchema,
 } from "@/lib/validation/auth";
 import { getEnv } from "@/lib/config/env";
 import { writeAuditEvent } from "@/lib/audit/audit";
 import { journeyDestination, safeReturnPath } from "@/lib/auth/journeys";
 import { registrationErrorCode } from "@/lib/auth/registration-errors";
+import { cookies } from "next/headers";
 
 export async function signUpAction(formData: FormData) {
   const parsed = signUpSchema.safeParse(Object.fromEntries(formData));
@@ -104,9 +106,50 @@ export async function forgotPasswordAction(formData: FormData) {
   if (!parsed.success) redirect("/auth/forgot-password?error=validation");
 
   const supabase = await createServerSupabaseClient();
-  await supabase.auth.resetPasswordForEmail(parsed.data.email, {
-    redirectTo: `${getEnv().NEXT_PUBLIC_APP_URL}/auth/reset-password`,
+  const { error } = await supabase.auth.resetPasswordForEmail(
+    parsed.data.email,
+    {
+      redirectTo: `${getEnv().NEXT_PUBLIC_APP_URL}/auth/callback`,
+    },
+  );
+  if (error)
+    redirect(
+      `/auth/forgot-password?error=${error.status === 429 ? "rate-limit" : "delivery"}`,
+    );
+  (await cookies()).set("sa-password-recovery", "requested", {
+    httpOnly: true,
+    secure: getEnv().NEXT_PUBLIC_APP_URL.startsWith("https://"),
+    sameSite: "lax",
+    path: "/auth",
+    maxAge: 1800,
   });
 
   redirect("/auth/check-email");
+}
+
+export async function resetPasswordAction(formData: FormData) {
+  const parsed = resetPasswordSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) redirect("/auth/reset-password?error=validation");
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: sessionError,
+  } = await supabase.auth.getUser();
+  if (sessionError || !user) redirect("/auth/forgot-password?error=expired");
+  const { error } = await supabase.auth.updateUser({
+    password: parsed.data.password,
+  });
+  await writeAuditEvent({
+    actorId: user.id,
+    action: "password_reset",
+    resourceType: "user",
+    resourceId: user.id,
+    success: !error,
+  });
+  if (error)
+    redirect(
+      `/auth/reset-password?error=${error.code === "same_password" ? "same" : error.code === "weak_password" ? "weak" : "update"}`,
+    );
+  await supabase.auth.signOut({ scope: "global" });
+  redirect("/auth/sign-in?reset=success");
 }

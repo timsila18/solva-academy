@@ -38,6 +38,15 @@ export const signInSchema = z.object({
 export const forgotPasswordSchema = z.object({
   email: z.string().trim().toLowerCase().email(),
 });
+export const resetPasswordSchema = z
+  .object({
+    password: z.string().min(8),
+    confirmPassword: z.string().min(8),
+  })
+  .refine((value) => value.password === value.confirmPassword, {
+    path: ["confirmPassword"],
+    message: "Passwords must match.",
+  });
 
 export const profileSchema = z.object({
   fullName: z.string().min(2),
